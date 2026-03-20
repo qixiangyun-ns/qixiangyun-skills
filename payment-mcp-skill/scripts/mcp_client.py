@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""缴款 Skill 的多服务 MCP 客户端。"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import logging
+import sys
+from typing import Any
+
+from qxy_mcp_lib import (
+    QXYAuthError,
+    QXYMCPError,
+    SERVICE_LABELS,
+    call_tool,
+    describe_tool,
+    list_services,
+    list_tools,
+    parse_json_mapping,
+    resolve_service_for_tool,
+)
+
+LOGGER = logging.getLogger(__name__)
+
+
+def _dump_json(payload: Any) -> None:
+    """将结果以 JSON 输出到标准输出。"""
+
+    json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
+    sys.stdout.write("\n")
+
+
+def build_parser() -> argparse.ArgumentParser:
+    """构建 CLI 参数解析器。"""
+
+    parser = argparse.ArgumentParser(
+        description="企享云缴款 MCP 工具调用客户端",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "示例:\n"
+            "  python3 scripts/mcp_client.py --list-services\n\n"
+            "  python3 scripts/mcp_client.py --service tax_payment --list-tools\n\n"
+            "  python3 scripts/mcp_client.py --service tax_payment "
+            "--tool load_payment_task --args @/tmp/payment.json\n\n"
+            "  python3 scripts/mcp_client.py --tool query_wszm_parse_task_result_auto "
+            "--args '{\"aggOrgId\": \"4788840764917695\", \"taskId\": \"123\"}'"
+        ),
+    )
+    parser.add_argument("--service", help="服务别名，如 tax_payment")
+    parser.add_argument("--tool", help="工具名称")
+    parser.add_argument("--args", help="工具参数 JSON，支持 @文件路径")
+    parser.add_argument("--list-services", action="store_true", help="列出所有服务")
+    parser.add_argument("--list-tools", action="store_true", help="列出服务下的工具")
+    parser.add_argument(
+        "--describe-tool",
+        metavar="TOOL_NAME",
+        help="查看指定工具的 Schema，需要配合 --service 使用",
+    )
+    return parser
+
+
+def main() -> int:
+    """CLI 入口。"""
+
+    logging.basicConfig(level=logging.INFO, format="[%(levelname)s] %(message)s")
+    parser = build_parser()
+    args = parser.parse_args()
+
+    try:
+        if args.list_services:
+            services = list_services()
+            _dump_json(
+                [
+                    {
+                        "service": service_name,
+                        "label": SERVICE_LABELS.get(service_name, service_name),
+                        "endpoint": endpoint,
+                    }
+                    for service_name, endpoint in services.items()
+                ]
+            )
+            return 0
+
+        if args.list_tools:
+            if not args.service:
+                parser.error("--list-tools 需要配合 --service 使用。")
+            _dump_json(list_tools(args.service))
+            return 0
+
+        if args.describe_tool:
+            if not args.service:
+                parser.error("--describe-tool 需要配合 --service 使用。")
+            _dump_json(describe_tool(args.service, args.describe_tool))
+            return 0
+
+        if args.tool:
+            service_name = resolve_service_for_tool(args.service, args.tool)
+            _dump_json(call_tool(service_name, args.tool, parse_json_mapping(args.args)))
+            return 0
+
+        parser.print_help()
+        return 1
+    except (QXYMCPError, QXYAuthError, ValueError, json.JSONDecodeError) as exc:
+        LOGGER.error("%s", exc)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
