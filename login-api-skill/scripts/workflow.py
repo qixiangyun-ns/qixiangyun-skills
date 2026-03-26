@@ -7,15 +7,9 @@ Tax Login Skill - 7步登录工作流
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
 
-SHARED_DIR = Path(__file__).resolve().parents[2] / "shared"
-if str(SHARED_DIR) not in sys.path:
-    sys.path.insert(0, str(SHARED_DIR))
-
-from login_state import save_login_state
+from .login_state_support import save_login_state
 
 from .client import TaxLoginClient
 from .exceptions import TaxLoginError

@@ -17,7 +17,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import declaration_workflow  # noqa: E402
-from login_state import LoginStateError  # noqa: E402
+from login_state_support import LoginStateError  # noqa: E402
 
 
 def build_valid_config() -> dict[str, Any]:

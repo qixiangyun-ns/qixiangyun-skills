@@ -17,7 +17,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import payment_workflow  # noqa: E402
-from login_state import LoginStateError  # noqa: E402
+from login_state_support import LoginStateError  # noqa: E402
 from qxy_mcp_lib import QXYWorkflowError  # noqa: E402
 
 

@@ -10,11 +10,7 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
-SHARED_DIR = Path(__file__).resolve().parents[2] / "shared"
-if str(SHARED_DIR) not in sys.path:
-    sys.path.insert(0, str(SHARED_DIR))
-
-from login_state import LoginStateError, apply_login_state_to_config
+from login_state_support import LoginStateError, apply_login_state_to_config
 
 from qxy_mcp_lib import (
     QXYMCPError,
