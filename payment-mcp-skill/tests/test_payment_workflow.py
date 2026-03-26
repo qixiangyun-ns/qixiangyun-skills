@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from typing import Any
@@ -14,6 +17,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import payment_workflow  # noqa: E402
+from login_state import LoginStateError  # noqa: E402
 from qxy_mcp_lib import QXYWorkflowError  # noqa: E402
 
 
@@ -53,6 +57,20 @@ def build_valid_config() -> dict[str, Any]:
 
 class PaymentWorkflowValidationTest(unittest.TestCase):
     """覆盖参数校验与基础流程行为。"""
+
+    @staticmethod
+    def _write_login_state(state_path: Path) -> None:
+        payload = {
+            "version": 1,
+            "ready": True,
+            "aggOrgId": "4788840764917695",
+            "accountId": "ACC-PAY-001",
+            "source": "cache",
+        }
+        state_path.write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
 
     def test_build_payment_args_keeps_common_fields(self) -> None:
         """缴款参数构建应保留顶层公共字段和明细内容。"""
@@ -118,16 +136,42 @@ class PaymentWorkflowValidationTest(unittest.TestCase):
             "result": {"businessStatus": 3, "resultMessage": "成功"},
         }
 
-        result = payment_workflow.run_workflow(config, only_steps={"payment"})
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "login-state.json"
+            self._write_login_state(state_path)
+
+            with mock.patch.dict(
+                os.environ,
+                {"QXY_LOGIN_STATE_PATH": str(state_path)},
+                clear=False,
+            ):
+                result = payment_workflow.run_workflow(config, only_steps={"payment"})
 
         self.assertEqual(result["steps"]["payment"]["taskId"], "TASK-001")
         self.assertEqual(result["steps"]["payment"]["query"]["state"], "success")
+        self.assertEqual(result["accountId"], "ACC-PAY-001")
         mock_call_tool.assert_called_once_with(
             "tax_payment",
             "load_payment_task",
             mock.ANY,
         )
         mock_poll_tool.assert_called_once()
+        self.assertEqual(mock_call_tool.call_args.args[2]["accountId"], "ACC-PAY-001")
+
+    def test_run_workflow_requires_shared_login_state(self) -> None:
+        """未登录时，缴款 workflow 应明确提示先完成登录。"""
+
+        config = build_valid_config()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "missing-login-state.json"
+            with mock.patch.dict(
+                os.environ,
+                {"QXY_LOGIN_STATE_PATH": str(state_path)},
+                clear=False,
+            ):
+                with self.assertRaisesRegex(LoginStateError, "未检测到共享登录态"):
+                    payment_workflow.run_workflow(config, only_steps={"payment"})
 
 
 if __name__ == "__main__":

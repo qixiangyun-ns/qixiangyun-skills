@@ -7,7 +7,15 @@ Tax Login Skill - 7步登录工作流
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Sequence
+
+SHARED_DIR = Path(__file__).resolve().parents[2] / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
+
+from login_state import save_login_state
 
 from .client import TaxLoginClient
 from .exceptions import TaxLoginError
@@ -349,11 +357,19 @@ class TaxLoginWorkflow:
         )
         self._ensure_success(cache_result, "校验税局缓存")
         if bool(cache_result.get("data")):
+            saved_state = save_login_state(
+                __file__,
+                agg_org_id=normalized_agg_org_id,
+                account_id=normalized_account_id,
+                source="cache",
+            )
             return {
                 "success": True,
                 "ready": True,
                 "source": "cache",
                 "message": "企业账号缓存有效，可直接开展办税业务",
+                "state_file": saved_state["state_file"],
+                "login_state": saved_state["state"],
                 "raw": cache_result,
             }
 
@@ -363,11 +379,19 @@ class TaxLoginWorkflow:
         )
         self._ensure_success(quick_login_result, "校验税局快速登录")
         if bool(quick_login_result.get("data")):
+            saved_state = save_login_state(
+                __file__,
+                agg_org_id=normalized_agg_org_id,
+                account_id=normalized_account_id,
+                source="quick_login",
+            )
             return {
                 "success": True,
                 "ready": True,
                 "source": "quick_login",
                 "message": "企业账号支持快速登录，可直接开展办税业务",
+                "state_file": saved_state["state_file"],
+                "login_state": saved_state["state"],
                 "raw": quick_login_result,
             }
 

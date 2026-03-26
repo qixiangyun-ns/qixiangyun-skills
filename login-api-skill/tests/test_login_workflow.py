@@ -3,7 +3,10 @@
 
 from __future__ import annotations
 
+import json
+import os
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -89,20 +92,33 @@ class TaxLoginWorkflowTest(unittest.TestCase):
     def test_login_enterprise_account_prefers_cache(self) -> None:
         """企业账号登录就绪校验应优先复用缓存。"""
 
-        self.client.check_cache.return_value = {
-            "code": "2000",
-            "success": True,
-            "data": True,
-        }
+        with tempfile.TemporaryDirectory() as temp_dir:
+            state_path = Path(temp_dir) / "login-state.json"
+            self.client.check_cache.return_value = {
+                "code": "2000",
+                "success": True,
+                "data": True,
+            }
 
-        result = self.workflow.login_enterprise_account(
-            agg_org_id="7583454730897015",
-            account_id="5203935360402241",
-        )
+            with mock.patch.dict(
+                os.environ,
+                {"QXY_LOGIN_STATE_PATH": str(state_path)},
+                clear=False,
+            ):
+                result = self.workflow.login_enterprise_account(
+                    agg_org_id="7583454730897015",
+                    account_id="5203935360402241",
+                )
 
-        self.assertTrue(result["ready"])
-        self.assertEqual(result["source"], "cache")
-        self.client.check_app_login.assert_not_called()
+            self.assertTrue(result["ready"])
+            self.assertEqual(result["source"], "cache")
+            self.assertEqual(Path(result["state_file"]).resolve(), state_path.resolve())
+            self.client.check_app_login.assert_not_called()
+
+            state_payload = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(state_payload["aggOrgId"], "7583454730897015")
+            self.assertEqual(state_payload["accountId"], "5203935360402241")
+            self.assertEqual(state_payload["source"], "cache")
 
 
 class TaxLoginClientApiTest(unittest.TestCase):

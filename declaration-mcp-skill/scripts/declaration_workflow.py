@@ -10,6 +10,12 @@ import sys
 from pathlib import Path
 from typing import Any, Callable
 
+SHARED_DIR = Path(__file__).resolve().parents[2] / "shared"
+if str(SHARED_DIR) not in sys.path:
+    sys.path.insert(0, str(SHARED_DIR))
+
+from login_state import LoginStateError, apply_login_state_to_config
+
 from qxy_mcp_lib import (
     QXYMCPError,
     QXYWorkflowError,
@@ -347,11 +353,18 @@ def _build_missing_check_args(
 def run_workflow(config: dict[str, Any], only_steps: set[str] | None = None) -> dict[str, Any]:
     """按固定顺序执行申报闭环。"""
 
+    config, login_state = apply_login_state_to_config(__file__, config)
     selected_steps = only_steps or set(STEP_ORDER)
     results: dict[str, Any] = {
         "aggOrgId": config["aggOrgId"],
+        "accountId": config.get("accountId"),
         "year": config["year"],
         "period": config["period"],
+        "login": {
+            "aggOrgId": login_state["aggOrgId"],
+            "accountId": login_state["accountId"],
+            "source": login_state.get("source"),
+        },
         "steps": {},
     }
     step_configs = config.get("steps", {})
@@ -491,7 +504,13 @@ def main() -> int:
 
         parser.print_help()
         return 1
-    except (QXYMCPError, QXYWorkflowError, ValueError, json.JSONDecodeError) as exc:
+    except (
+        LoginStateError,
+        QXYMCPError,
+        QXYWorkflowError,
+        ValueError,
+        json.JSONDecodeError,
+    ) as exc:
         LOGGER.error("%s", exc)
         return 2
 
