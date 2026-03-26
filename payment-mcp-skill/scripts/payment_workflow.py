@@ -7,6 +7,7 @@ import argparse
 import json
 import logging
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -41,12 +42,37 @@ def build_sample_config() -> dict[str, Any]:
         "steps": {
             "payment": {
                 "enabled": True,
-                "detail": [],
+                "detail": [
+                    {
+                        "yzpzzlDm": "BDA0610606",
+                        "fromDate": "2026-03-01",
+                        "toDate": "2026-03-31",
+                        "taxAmount": 10.0,
+                        "jkfs": "1",
+                        "yhzh": "请替换为银行账号",
+                        "agreementAccount": None,
+                        "zspmDm": None,
+                        "zsxmDm": None,
+                        "bsswjg": None,
+                        "kqyswjgmc": None,
+                        "sebyz": "N",
+                    }
+                ],
+                "duration": None,
+                "tdztswjgmc": None,
                 "poll_result": True,
             },
             "certificate": {
                 "enabled": False,
-                "zsxmDtos": [],
+                "zsxmDtos": [
+                    {
+                        "ssqQ": "2026-03-01",
+                        "ssqZ": "2026-03-31",
+                        "yzpzzlDm": "BDA0610606",
+                        "zspmDm": None,
+                    }
+                ],
+                "tdztswjgmc": None,
                 "poll_result": True,
             },
         },
@@ -75,6 +101,172 @@ def build_common_args(config: dict[str, Any]) -> dict[str, Any]:
         },
         {"accountId": config.get("accountId")},
     )
+
+
+def _parse_iso_date(raw_value: Any, field_name: str) -> date:
+    """解析 ISO 日期并在失败时给出明确错误。"""
+
+    if not isinstance(raw_value, str) or not raw_value.strip():
+        raise QXYWorkflowError(f"`{field_name}` 是必填字符串，格式必须为 YYYY-MM-DD。")
+    try:
+        return date.fromisoformat(raw_value.strip())
+    except ValueError as exc:
+        raise QXYWorkflowError(f"`{field_name}` 格式非法，必须为 YYYY-MM-DD。") from exc
+
+
+def _normalize_optional_string(raw_value: Any, field_name: str) -> str | None:
+    """标准化可选字符串字段。"""
+
+    if raw_value is None:
+        return None
+    if not isinstance(raw_value, str):
+        raise QXYWorkflowError(f"`{field_name}` 必须是字符串或 null。")
+    stripped = raw_value.strip()
+    return stripped or None
+
+
+def _normalize_required_string(
+    raw_value: Any, field_name: str, *, allow_empty: bool = False
+) -> str:
+    """标准化必填字符串字段。"""
+
+    if not isinstance(raw_value, str):
+        raise QXYWorkflowError(f"`{field_name}` 必须是字符串。")
+    stripped = raw_value.strip()
+    if not allow_empty and not stripped:
+        raise QXYWorkflowError(f"`{field_name}` 不能为空。")
+    return stripped
+
+
+def _normalize_payment_detail_item(item: Any, index: int) -> dict[str, Any]:
+    """校验并标准化单条缴款明细。"""
+
+    if not isinstance(item, dict):
+        raise QXYWorkflowError(f"`payment.detail[{index}]` 必须是对象。")
+
+    normalized = dict(item)
+    normalized["yzpzzlDm"] = _normalize_required_string(
+        item.get("yzpzzlDm"),
+        f"payment.detail[{index}].yzpzzlDm",
+    )
+    from_date = _parse_iso_date(item.get("fromDate"), f"payment.detail[{index}].fromDate")
+    to_date = _parse_iso_date(item.get("toDate"), f"payment.detail[{index}].toDate")
+    if from_date > to_date:
+        raise QXYWorkflowError(
+            f"`payment.detail[{index}]` 的 fromDate 不能晚于 toDate。"
+        )
+
+    tax_amount = item.get("taxAmount")
+    if isinstance(tax_amount, bool) or not isinstance(tax_amount, (int, float)):
+        raise QXYWorkflowError(f"`payment.detail[{index}].taxAmount` 必须是数值。")
+    if tax_amount <= 0:
+        raise QXYWorkflowError(f"`payment.detail[{index}].taxAmount` 必须大于 0。")
+
+    normalized["fromDate"] = from_date.isoformat()
+    normalized["toDate"] = to_date.isoformat()
+    normalized["taxAmount"] = tax_amount
+
+    for field_name in (
+        "jkfs",
+        "agreementAccount",
+        "yhzh",
+        "zspmDm",
+        "zsxmDm",
+        "bsswjg",
+        "kqyswjgmc",
+        "sebyz",
+    ):
+        if field_name in normalized:
+            normalized[field_name] = _normalize_optional_string(
+                normalized.get(field_name),
+                f"payment.detail[{index}].{field_name}",
+            )
+
+    return normalized
+
+
+def _normalize_payment_detail(detail: Any) -> list[dict[str, Any]]:
+    """校验并标准化缴款明细列表。"""
+
+    if not isinstance(detail, list) or not detail:
+        raise QXYWorkflowError("`payment.detail` 不能为空。")
+    return [_normalize_payment_detail_item(item, index) for index, item in enumerate(detail)]
+
+
+def _normalize_certificate_item(item: Any, index: int) -> dict[str, Any]:
+    """校验并标准化单条完税证明请求项。"""
+
+    if not isinstance(item, dict):
+        raise QXYWorkflowError(f"`certificate.zsxmDtos[{index}]` 必须是对象。")
+
+    normalized = dict(item)
+    normalized["yzpzzlDm"] = _normalize_required_string(
+        item.get("yzpzzlDm"),
+        f"certificate.zsxmDtos[{index}].yzpzzlDm",
+    )
+    start_date = _parse_iso_date(item.get("ssqQ"), f"certificate.zsxmDtos[{index}].ssqQ")
+    end_date = _parse_iso_date(item.get("ssqZ"), f"certificate.zsxmDtos[{index}].ssqZ")
+    if start_date > end_date:
+        raise QXYWorkflowError(
+            f"`certificate.zsxmDtos[{index}]` 的 ssqQ 不能晚于 ssqZ。"
+        )
+
+    normalized["ssqQ"] = start_date.isoformat()
+    normalized["ssqZ"] = end_date.isoformat()
+    if "zspmDm" in normalized:
+        normalized["zspmDm"] = _normalize_optional_string(
+            normalized.get("zspmDm"),
+            f"certificate.zsxmDtos[{index}].zspmDm",
+        )
+    return normalized
+
+
+def _normalize_certificate_items(zsxm_dtos: Any) -> list[dict[str, Any]]:
+    """校验并标准化完税证明请求项。"""
+
+    if not isinstance(zsxm_dtos, list) or not zsxm_dtos:
+        raise QXYWorkflowError("`certificate.zsxmDtos` 不能为空。")
+    if len(zsxm_dtos) > 20:
+        raise QXYWorkflowError(
+            "`certificate.zsxmDtos` 最多支持 20 条，超过会触发官方 5003 错误。"
+        )
+
+    normalized_items = [
+        _normalize_certificate_item(item, index)
+        for index, item in enumerate(zsxm_dtos)
+    ]
+
+    seen_keys: set[tuple[str, str, str, str]] = set()
+    min_year: int | None = None
+    max_year: int | None = None
+    for index, item in enumerate(normalized_items):
+        start_date = date.fromisoformat(item["ssqQ"])
+        end_date = date.fromisoformat(item["ssqZ"])
+        item_min_year = min(start_date.year, end_date.year)
+        item_max_year = max(start_date.year, end_date.year)
+        min_year = item_min_year if min_year is None else min(min_year, item_min_year)
+        max_year = item_max_year if max_year is None else max(max_year, item_max_year)
+
+        unique_key = (
+            item["yzpzzlDm"],
+            item["ssqQ"],
+            item["ssqZ"],
+            item.get("zspmDm") or "",
+        )
+        if unique_key in seen_keys:
+            raise QXYWorkflowError(
+                f"`certificate.zsxmDtos[{index}]` 与前面的记录重复，"
+                "会触发官方 5002 错误。"
+            )
+        seen_keys.add(unique_key)
+
+    # 官方接口明确要求“最早起 + 最晚止”不能跨自然年，这里在本地提前拦截。
+    if min_year is not None and max_year is not None and min_year != max_year:
+        raise QXYWorkflowError(
+            "`certificate.zsxmDtos` 的最早所属期起与最晚所属期止不可跨自然年。"
+        )
+
+    return normalized_items
 
 
 def _poll_after_start(
@@ -138,9 +330,7 @@ def _run_async_step(
 
 
 def _build_payment_args(step_cfg: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    detail = step_cfg.get("detail")
-    if not isinstance(detail, list) or not detail:
-        raise QXYWorkflowError("`payment.detail` 不能为空。")
+    detail = _normalize_payment_detail(step_cfg.get("detail"))
     return merge_non_null(
         build_common_args(config),
         {
@@ -152,15 +342,43 @@ def _build_payment_args(step_cfg: dict[str, Any], config: dict[str, Any]) -> dic
 
 
 def _build_certificate_args(step_cfg: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
-    zsxm_dtos = step_cfg.get("zsxmDtos")
-    if not isinstance(zsxm_dtos, list) or not zsxm_dtos:
-        raise QXYWorkflowError("`certificate.zsxmDtos` 不能为空。")
+    zsxm_dtos = _normalize_certificate_items(step_cfg.get("zsxmDtos"))
     return merge_non_null(
         build_common_args(config),
         {
             "zsxmDtos": zsxm_dtos,
             "tdztswjgmc": step_cfg.get("tdztswjgmc"),
         },
+    )
+
+
+def run_payment(step_cfg: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """执行税款缴纳闭环步骤。"""
+
+    return _run_async_step(
+        step_name="payment",
+        step_cfg=step_cfg,
+        config=config,
+        start_service="tax_payment",
+        start_tool="load_payment_task",
+        payload_builder=_build_payment_args,
+        query_service="tax_payment",
+        query_tool="query_tax_payment_task_result_auto",
+    )
+
+
+def run_certificate(step_cfg: dict[str, Any], config: dict[str, Any]) -> dict[str, Any]:
+    """执行完税证明闭环步骤。"""
+
+    return _run_async_step(
+        step_name="certificate",
+        step_cfg=step_cfg,
+        config=config,
+        start_service="tax_payment_certificate",
+        start_tool="initiate_wszm_parse_task_auto",
+        payload_builder=_build_certificate_args,
+        query_service="tax_payment_certificate",
+        query_tool="query_wszm_parse_task_result_auto",
     )
 
 
@@ -177,26 +395,8 @@ def run_workflow(config: dict[str, Any], only_steps: set[str] | None = None) -> 
     step_configs = config.get("steps", {})
 
     handlers: dict[str, Callable[[dict[str, Any], dict[str, Any]], dict[str, Any]]] = {
-        "payment": lambda step_cfg, cfg: _run_async_step(
-            step_name="payment",
-            step_cfg=step_cfg,
-            config=cfg,
-            start_service="tax_payment",
-            start_tool="load_payment_task",
-            payload_builder=_build_payment_args,
-            query_service="tax_payment",
-            query_tool="query_tax_payment_task_result_auto",
-        ),
-        "certificate": lambda step_cfg, cfg: _run_async_step(
-            step_name="certificate",
-            step_cfg=step_cfg,
-            config=cfg,
-            start_service="tax_payment_certificate",
-            start_tool="initiate_wszm_parse_task_auto",
-            payload_builder=_build_certificate_args,
-            query_service="tax_payment_certificate",
-            query_tool="query_wszm_parse_task_result_auto",
-        ),
+        "payment": run_payment,
+        "certificate": run_certificate,
     }
 
     for step_name in STEP_ORDER:
