@@ -88,6 +88,8 @@ def build_parser() -> argparse.ArgumentParser:
     scaffold_parser = subparsers.add_parser("scaffold-config", help="生成配置样例")
     scaffold_parser.add_argument("--output", help="输出文件路径；不传则打印到标准输出")
 
+    subparsers.add_parser("check-config", help="检查当前凭证与 API 连通性")
+
     create_natural = subparsers.add_parser("create-natural-account", help="创建自然人账号")
     create_natural.add_argument("--area-code", required=True, help="地区代码，如 3100")
     create_natural.add_argument("--phone", required=True, help="手机号")
@@ -102,6 +104,19 @@ def build_parser() -> argparse.ArgumentParser:
     start_login.add_argument("--agg-org-id", required=True, help="自然人 aggOrgId")
     start_login.add_argument("--account-id", required=True, help="自然人 accountId")
 
+    start_login_by_phone = subparsers.add_parser(
+        "start-natural-login-by-phone",
+        help="仅用手机号和密码发送自然人登录验证码",
+    )
+    start_login_by_phone.add_argument("--area-code", required=True, help="地区代码，如 3100")
+    start_login_by_phone.add_argument("--phone", required=True, help="手机号")
+    start_login_by_phone.add_argument("--password", help="登录密码")
+    start_login_by_phone.add_argument(
+        "--password-env",
+        help="从指定环境变量读取登录密码，优先于在 shell 中明文传参",
+    )
+    start_login_by_phone.add_argument("--username", help="用户名；默认与手机号相同")
+
     verify_login = subparsers.add_parser("verify-natural-login", help="上传自然人登录验证码")
     verify_login.add_argument("--task-id", required=True, help="验证码任务ID")
     verify_login.add_argument("--sms-code", required=True, help="短信验证码")
@@ -112,8 +127,14 @@ def build_parser() -> argparse.ArgumentParser:
 
     subscribe = subparsers.add_parser("subscribe-enterprise-service", help="订购企业服务")
     subscribe.add_argument("--area-code", required=True, help="地区代码，如 3100")
-    subscribe.add_argument("--org-name", required=True, help="企业名称")
-    subscribe.add_argument("--tax-number", required=True, help="企业税号")
+    subscribe.add_argument("--org-name", "--nsrmc", dest="org_name", required=True, help="企业名称")
+    subscribe.add_argument(
+        "--tax-number",
+        "--nsrsbh",
+        dest="tax_number",
+        required=True,
+        help="企业税号",
+    )
 
     create_multi = subparsers.add_parser("create-multi-account", help="创建企业多账号")
     create_multi.add_argument("--agg-org-id", required=True, help="企业 aggOrgId")
@@ -125,6 +146,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="从指定环境变量读取办税小号密码，优先于在 shell 中明文传参",
     )
     create_multi.add_argument("--username", help="办税小号用户名；默认与手机号相同")
+    create_multi.add_argument(
+        "--login-mode",
+        type=int,
+        default=9,
+        help="多账号登录方式；如需企业快速登录，一般使用 14 或 15，默认 9",
+    )
 
     enterprise_ready = subparsers.add_parser(
         "login-enterprise-account",
@@ -152,6 +179,11 @@ def main() -> int:
     try:
         if args.command == "scaffold-config":
             _write_json(build_sample_config(), args.output)
+            return 0
+
+        if args.command == "check-config":
+            client = TaxLoginClient.from_config()
+            _write_json(client.check_connection())
             return 0
 
         if args.command == "show-login-state":
@@ -183,14 +215,34 @@ def main() -> int:
                 env_var_name=args.password_env,
                 field_name="自然人登录密码",
             )
-            _write_json(
-                workflow.create_natural_person_account(
-                    area_code=args.area_code,
-                    phone=args.phone,
-                    password=password,
-                    username=args.username,
+            try:
+                _write_json(
+                    workflow.create_natural_person_account(
+                        area_code=args.area_code,
+                        phone=args.phone,
+                        password=password,
+                        username=args.username,
+                    )
                 )
-            )
+            except TaxLoginError as exc:
+                if "已存在" in exc.message:
+                    _write_json(
+                        {
+                            "success": False,
+                            "existing_account": True,
+                            "message": "自然人账号已存在，请直接改用手机号登录流程发送验证码。",
+                            "error": {"code": exc.code, "message": exc.message},
+                            "nextAction": {
+                                "command": "start-natural-login-by-phone",
+                                "suggestedArgs": {
+                                    "area_code": args.area_code,
+                                    "phone": args.phone,
+                                },
+                            },
+                        }
+                    )
+                    return 0
+                raise
             return 0
 
         if args.command == "start-natural-login":
@@ -198,6 +250,22 @@ def main() -> int:
                 workflow.start_natural_person_login(
                     agg_org_id=args.agg_org_id,
                     account_id=args.account_id,
+                )
+            )
+            return 0
+
+        if args.command == "start-natural-login-by-phone":
+            password = _resolve_secret(
+                direct_value=args.password,
+                env_var_name=args.password_env,
+                field_name="自然人登录密码",
+            )
+            _write_json(
+                workflow.start_natural_person_login_by_phone(
+                    area_code=args.area_code,
+                    phone=args.phone,
+                    password=password,
+                    username=args.username,
                 )
             )
             return 0
@@ -243,6 +311,7 @@ def main() -> int:
                     phone=args.phone,
                     password=password,
                     username=args.username,
+                    login_mode=args.login_mode,
                 )
             )
             return 0

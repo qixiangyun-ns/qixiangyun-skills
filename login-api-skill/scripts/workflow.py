@@ -52,6 +52,22 @@ class TaxLoginWorkflow:
         )
 
     @staticmethod
+    def _normalize_app_area_code(area_code: str) -> str:
+        """
+        将自然人 APP 登录使用的地区代码标准化为 4 位。
+
+        支持传入 `31` 或 `3100`，最终统一转成 `3100`。
+        """
+        normalized = str(area_code).strip()
+        if not normalized.isdigit():
+            raise TaxLoginError("INVALID_AREA_CODE", "地区代码必须为数字字符串")
+        if len(normalized) == 2:
+            return f"{normalized}00"
+        if len(normalized) == 4:
+            return normalized
+        raise TaxLoginError("INVALID_AREA_CODE", "地区代码只支持 2 位或 4 位编码")
+
+    @staticmethod
     def _normalize_string(value: Any, field_name: str) -> str:
         """标准化非空字符串。"""
         if value is None:
@@ -157,6 +173,44 @@ class TaxLoginWorkflow:
             "account_id": normalized_account_id,
             "message": data.get("msg") or data.get("message") or "验证码已发送",
             "raw": success_result,
+        }
+
+    def start_natural_person_login_by_phone(
+        self,
+        area_code: str,
+        phone: str,
+        password: str,
+        username: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        使用手机号和密码直接发起自然人登录验证码。
+
+        适用于“账号已存在但尚未掌握 accountId / aggOrgId”的场景。
+        """
+        normalized_area_code = self._normalize_app_area_code(area_code)
+        normalized_phone = self._normalize_string(phone, "手机号")
+        normalized_password = self._normalize_string(password, "密码")
+        normalized_username = self._normalize_string(username or phone, "用户名")
+
+        result = self.client.login_flow_step1_send_sms(
+            area_code=normalized_area_code,
+            phone=normalized_phone,
+            password=normalized_password,
+        )
+        if not result.get("success"):
+            raise TaxLoginError(
+                str(result.get("code", "UNKNOWN")),
+                str(result.get("message", "自然人登录验证码发送失败")),
+            )
+
+        return {
+            "success": True,
+            "need_verify": bool(result.get("need_verify", False)),
+            "task_id": None if result.get("task_id") in (None, "") else str(result["task_id"]),
+            "phone": normalized_phone,
+            "username": normalized_username,
+            "message": str(result.get("message") or "验证码已发送"),
+            "raw": result,
         }
 
     def verify_natural_person_login(
@@ -327,6 +381,15 @@ class TaxLoginWorkflow:
         account_data = self._extract_account_data(success_result, "多账号创建")
         account_data["message"] = "多账号创建成功"
         account_data["is_multi_account"] = True
+        if login_mode not in (14, 15):
+            account_data["nextAction"] = {
+                "message": (
+                    "当前多账号使用的 login_mode 不是 14 或 15。"
+                    "如果后续企业登录就绪校验报“登录方式必须是14或者15”，"
+                    "请重新创建多账号并将 login_mode 改为 14 或 15。"
+                ),
+                "suggested_login_mode": 15,
+            }
         return account_data
 
     def login_enterprise_account(
@@ -349,7 +412,27 @@ class TaxLoginWorkflow:
             agg_org_id=normalized_agg_org_id,
             account_id=normalized_account_id,
         )
-        self._ensure_success(cache_result, "校验税局缓存")
+        try:
+            self._ensure_success(cache_result, "校验税局缓存")
+        except TaxLoginError as exc:
+            if exc.code == "4000" and "14或者15" in exc.message:
+                return {
+                    "success": False,
+                    "ready": False,
+                    "source": "none",
+                    "message": "当前企业账号的登录方式与税局要求不匹配。",
+                    "error": {"code": exc.code, "message": exc.message},
+                    "nextAction": {
+                        "command": "create-multi-account",
+                        "message": (
+                            "请重新创建企业多账号，并将 login_mode 设置为 14 或 15；"
+                            "如果地区要求先实名登录，也请先执行 start-natural-login-by-phone。"
+                        ),
+                        "suggestedArgs": {"login_mode": 15},
+                    },
+                    "raw": cache_result,
+                }
+            raise
         if bool(cache_result.get("data")):
             saved_state = save_login_state(
                 __file__,
@@ -371,7 +454,27 @@ class TaxLoginWorkflow:
             agg_org_id=normalized_agg_org_id,
             account_id=normalized_account_id,
         )
-        self._ensure_success(quick_login_result, "校验税局快速登录")
+        try:
+            self._ensure_success(quick_login_result, "校验税局快速登录")
+        except TaxLoginError as exc:
+            if exc.code == "4000" and "14或者15" in exc.message:
+                return {
+                    "success": False,
+                    "ready": False,
+                    "source": "none",
+                    "message": "当前企业账号的登录方式与税局要求不匹配。",
+                    "error": {"code": exc.code, "message": exc.message},
+                    "nextAction": {
+                        "command": "create-multi-account",
+                        "message": (
+                            "请重新创建企业多账号，并将 login_mode 设置为 14 或 15；"
+                            "如果地区要求先实名登录，也请先执行 start-natural-login-by-phone。"
+                        ),
+                        "suggestedArgs": {"login_mode": 15},
+                    },
+                    "raw": quick_login_result,
+                }
+            raise
         if bool(quick_login_result.get("data")):
             saved_state = save_login_state(
                 __file__,

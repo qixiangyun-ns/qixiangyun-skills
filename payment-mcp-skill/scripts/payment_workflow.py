@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import logging
 import sys
@@ -31,24 +32,43 @@ STEP_ORDER: tuple[str, ...] = (
 )
 
 
-def build_sample_config() -> dict[str, Any]:
+def _resolve_sample_year_period(
+    year: int | None = None,
+    period: int | None = None,
+) -> tuple[int, int]:
+    """解析样例配置使用的所属年和所属期。"""
+
+    today = date.today()
+    return year or today.year, period or today.month
+
+
+def _month_range(year: int, period: int) -> tuple[str, str]:
+    """根据所属年月返回当月起止日期。"""
+
+    last_day = calendar.monthrange(year, period)[1]
+    return f"{year:04d}-{period:02d}-01", f"{year:04d}-{period:02d}-{last_day:02d}"
+
+
+def build_sample_config(year: int | None = None, period: int | None = None) -> dict[str, Any]:
     """生成示例配置。"""
 
+    sample_year, sample_period = _resolve_sample_year_period(year, period)
+    month_start, month_end = _month_range(sample_year, sample_period)
     return {
         "aggOrgId": "请替换为企业ID",
-        "year": 2026,
-        "period": 3,
+        "year": sample_year,
+        "period": sample_period,
         "accountId": None,
         "poll_interval_seconds": 10,
-        "max_poll_attempts": 12,
+        "max_poll_attempts": 30,
         "steps": {
             "payment": {
                 "enabled": True,
                 "detail": [
                     {
                         "yzpzzlDm": "BDA0610606",
-                        "fromDate": "2026-03-01",
-                        "toDate": "2026-03-31",
+                        "fromDate": month_start,
+                        "toDate": month_end,
                         "taxAmount": 10.0,
                         "jkfs": "1",
                         "yhzh": "请替换为银行账号",
@@ -68,8 +88,8 @@ def build_sample_config() -> dict[str, Any]:
                 "enabled": False,
                 "zsxmDtos": [
                     {
-                        "ssqQ": "2026-03-01",
-                        "ssqZ": "2026-03-31",
+                        "ssqQ": month_start,
+                        "ssqZ": month_end,
                         "yzpzzlDm": "BDA0610606",
                         "zspmDm": None,
                     }
@@ -429,6 +449,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     scaffold_parser = subparsers.add_parser("scaffold-config", help="生成配置样例")
     scaffold_parser.add_argument("--output", help="输出文件路径；不传则打印到标准输出")
+    scaffold_parser.add_argument("--year", type=int, help="所属年；默认使用当前年份")
+    scaffold_parser.add_argument("--period", type=int, help="所属期；默认使用当前月份")
 
     run_parser = subparsers.add_parser("run", help="执行缴款闭环")
     run_parser.add_argument("--config", required=True, help="工作流配置 JSON 文件")
@@ -464,7 +486,7 @@ def main() -> int:
 
     try:
         if args.command == "scaffold-config":
-            _write_json(build_sample_config(), args.output)
+            _write_json(build_sample_config(args.year, args.period), args.output)
             return 0
 
         if args.command == "run":

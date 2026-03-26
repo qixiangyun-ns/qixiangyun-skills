@@ -102,3 +102,39 @@ class DeclarationWorkflowLoginGuardTest(unittest.TestCase):
             ):
                 with self.assertRaisesRegex(LoginStateError, "未检测到共享登录态"):
                     declaration_workflow.run_workflow(config, only_steps={"fetch_roster"})
+
+
+class DeclarationWorkflowConfigTest(unittest.TestCase):
+    """覆盖样例配置和初始化前置校验。"""
+
+    def test_build_sample_config_accepts_year_and_period(self) -> None:
+        """脚手架应允许显式指定所属年和所属期。"""
+
+        config = declaration_workflow.build_sample_config(2025, 12)
+
+        self.assertEqual(config["year"], 2025)
+        self.assertEqual(config["period"], 12)
+        self.assertEqual(config["max_poll_attempts"], 30)
+        self.assertEqual(
+            config["steps"]["init_data"]["zsxmList"][0]["ssqQ"],
+            "2025-12-01",
+        )
+
+    def test_run_init_data_rejects_known_unsupported_tax_code(self) -> None:
+        """已知不支持的税种应在本地直接拦截。"""
+
+        config = build_valid_config()
+        step_cfg = {
+            "enabled": True,
+            "query_after_start": True,
+            "zsxmList": [
+                {
+                    "yzpzzlDm": "BDA0610135",
+                    "ssqQ": "2026-03-01",
+                    "ssqZ": "2026-03-31",
+                }
+            ],
+        }
+
+        with self.assertRaisesRegex(Exception, "个人所得税当前不支持初始化"):
+            declaration_workflow.run_init_data(step_cfg, config)

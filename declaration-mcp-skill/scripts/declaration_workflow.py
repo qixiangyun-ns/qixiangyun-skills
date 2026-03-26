@@ -4,9 +4,11 @@
 from __future__ import annotations
 
 import argparse
+import calendar
 import json
 import logging
 import sys
+from datetime import date
 from pathlib import Path
 from typing import Any, Callable
 
@@ -36,17 +38,40 @@ STEP_ORDER: tuple[str, ...] = (
     "missing_check",
 )
 
+UNSUPPORTED_INIT_DATA_CODES: dict[str, str] = {
+    "BDA0610135": "个人所得税当前不支持初始化，请先跳过该税种或人工处理。",
+}
 
-def build_sample_config() -> dict[str, Any]:
+
+def _resolve_sample_year_period(
+    year: int | None = None,
+    period: int | None = None,
+) -> tuple[int, int]:
+    """解析样例配置使用的所属年和所属期。"""
+
+    today = date.today()
+    return year or today.year, period or today.month
+
+
+def _month_range(year: int, period: int) -> tuple[str, str]:
+    """根据所属年月返回当月起止日期。"""
+
+    last_day = calendar.monthrange(year, period)[1]
+    return f"{year:04d}-{period:02d}-01", f"{year:04d}-{period:02d}-{last_day:02d}"
+
+
+def build_sample_config(year: int | None = None, period: int | None = None) -> dict[str, Any]:
     """生成示例配置。"""
 
+    sample_year, sample_period = _resolve_sample_year_period(year, period)
+    month_start, month_end = _month_range(sample_year, sample_period)
     return {
         "aggOrgId": "请替换为企业ID",
-        "year": 2026,
-        "period": 3,
+        "year": sample_year,
+        "period": sample_period,
         "accountId": None,
         "poll_interval_seconds": 10,
-        "max_poll_attempts": 12,
+        "max_poll_attempts": 30,
         "steps": {
             "fetch_roster": {
                 "enabled": True,
@@ -57,8 +82,8 @@ def build_sample_config() -> dict[str, Any]:
                 "zsxmList": [
                     {
                         "yzpzzlDm": "BDA0610606",
-                        "ssqQ": "2026-03-01",
-                        "ssqZ": "2026-03-31",
+                        "ssqQ": month_start,
+                        "ssqZ": month_end,
                     }
                 ],
                 "query_after_start": True,
@@ -92,8 +117,8 @@ def build_sample_config() -> dict[str, Any]:
             "history_pdf": {
                 "enabled": False,
                 "projectType": 1,
-                "skssqq": "2026-01-01",
-                "skssqz": "2026-03-31",
+                "skssqq": month_start,
+                "skssqz": month_end,
                 "yzpzzlDms": [],
                 "analysisPdf": "Y",
                 "poll_result": True,
@@ -197,6 +222,16 @@ def run_init_data(step_cfg: dict[str, Any], config: dict[str, Any]) -> dict[str,
     zsxm_list = step_cfg.get("zsxmList")
     if not isinstance(zsxm_list, list) or not zsxm_list:
         raise QXYWorkflowError("`init_data.zsxmList` 不能为空。")
+    unsupported_messages = [
+        f"{item.get('yzpzzlDm')}: {UNSUPPORTED_INIT_DATA_CODES[str(item.get('yzpzzlDm'))]}"
+        for item in zsxm_list
+        if str(item.get("yzpzzlDm")) in UNSUPPORTED_INIT_DATA_CODES
+    ]
+    if unsupported_messages:
+        raise QXYWorkflowError(
+            "检测到当前不支持初始化的税种："
+            + "；".join(unsupported_messages)
+        )
 
     start_args = merge_non_null(build_common_args(config), {"zsxmList": zsxm_list})
     start_result = call_tool("initialize_data", "load_init_data_task", start_args)
@@ -209,9 +244,21 @@ def run_init_data(step_cfg: dict[str, Any], config: dict[str, Any]) -> dict[str,
     for item in resolve_init_query_items(step_cfg):
         query_args = merge_non_null(build_common_args(config), item)
         query_result = call_tool("initialize_data", "get_init_data", query_args)
+        query_code = ""
+        message = ""
+        if isinstance(query_result, dict):
+            query_code = str(query_result.get("code") or "")
+            message = str(query_result.get("message") or "")
         query_results.append(
             {
                 "yzpzzlDm": item["yzpzzlDm"],
+                "alreadyFiled": "已申报" in message or query_code == "2002",
+                "supported": "当前不支持操作" not in message and "敬请期待" not in message,
+                "businessHint": (
+                    "当前所属期已申报，如需调整，请走申报更正与作废。"
+                    if "已申报" in message or query_code == "2002"
+                    else None
+                ),
                 "result": query_result,
             }
         )
@@ -451,6 +498,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     scaffold_parser = subparsers.add_parser("scaffold-config", help="生成配置样例")
     scaffold_parser.add_argument("--output", help="输出文件路径；不传则打印到标准输出")
+    scaffold_parser.add_argument("--year", type=int, help="所属年；默认使用当前年份")
+    scaffold_parser.add_argument("--period", type=int, help="所属期；默认使用当前月份")
 
     run_parser = subparsers.add_parser("run", help="执行申报闭环")
     run_parser.add_argument("--config", required=True, help="工作流配置 JSON 文件")
@@ -486,7 +535,7 @@ def main() -> int:
 
     try:
         if args.command == "scaffold-config":
-            _write_json(build_sample_config(), args.output)
+            _write_json(build_sample_config(args.year, args.period), args.output)
             return 0
 
         if args.command == "run":

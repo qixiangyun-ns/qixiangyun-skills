@@ -15,7 +15,7 @@ ROOT_DIR = Path(__file__).resolve().parents[1]
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
 
-from scripts import TaxLoginClient, TaxLoginError, TaxLoginWorkflow  # noqa: E402
+from scripts import Config, TaxLoginClient, TaxLoginError, TaxLoginWorkflow  # noqa: E402
 
 
 class TaxLoginWorkflowTest(unittest.TestCase):
@@ -78,6 +78,30 @@ class TaxLoginWorkflowTest(unittest.TestCase):
         self.assertEqual(result["enterprises"][0]["name"], "企业A")
         self.assertEqual(result["enterprises"][1]["identity_type"], "CWFZR")
 
+    def test_start_natural_person_login_by_phone_uses_app_login_flow(self) -> None:
+        """手机号直登应允许在未知 accountId 时先发送验证码。"""
+
+        self.client.login_flow_step1_send_sms.return_value = {
+            "success": True,
+            "need_verify": True,
+            "task_id": "TASK-001",
+            "message": "验证码已发送",
+        }
+
+        result = self.workflow.start_natural_person_login_by_phone(
+            area_code="31",
+            phone="13800138000",
+            password="password",
+        )
+
+        self.client.login_flow_step1_send_sms.assert_called_once_with(
+            area_code="3100",
+            phone="13800138000",
+            password="password",
+        )
+        self.assertTrue(result["need_verify"])
+        self.assertEqual(result["task_id"], "TASK-001")
+
     def test_choose_target_enterprise_requires_unique_match(self) -> None:
         """企业选择遇到多条同名记录时应要求改用税号。"""
 
@@ -119,6 +143,43 @@ class TaxLoginWorkflowTest(unittest.TestCase):
             self.assertEqual(state_payload["aggOrgId"], "7583454730897015")
             self.assertEqual(state_payload["accountId"], "5203935360402241")
             self.assertEqual(state_payload["source"], "cache")
+
+    def test_login_enterprise_account_returns_next_action_for_invalid_login_mode(self) -> None:
+        """企业登录若遇到 14/15 限制，应返回结构化下一步建议。"""
+
+        self.client.check_cache.return_value = {
+            "code": "4000",
+            "success": False,
+            "message": "登录方式必须是14或者15",
+        }
+
+        result = self.workflow.login_enterprise_account(
+            agg_org_id="7583454730897015",
+            account_id="5203935360402241",
+        )
+
+        self.assertFalse(result["success"])
+        self.assertEqual(result["nextAction"]["command"], "create-multi-account")
+        self.assertEqual(result["nextAction"]["suggestedArgs"]["login_mode"], 15)
+
+
+class TaxLoginConfigTest(unittest.TestCase):
+    """覆盖凭证格式兼容逻辑。"""
+
+    def test_config_supports_split_credentials(self) -> None:
+        """配置读取应兼容 QXY_CLIENT_APPKEY 和 QXY_CLIENT_SECRET。"""
+
+        with mock.patch.dict(
+            os.environ,
+            {
+                "QXY_CLIENT_APPKEY": "10003110",
+                "QXY_CLIENT_SECRET": "secret",
+            },
+            clear=True,
+        ):
+            config = Config().load()
+
+        self.assertEqual(config.validate(), ("10003110", "secret"))
 
 
 class TaxLoginClientApiTest(unittest.TestCase):

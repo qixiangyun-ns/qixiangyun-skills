@@ -86,6 +86,19 @@ class PaymentWorkflowValidationTest(unittest.TestCase):
         self.assertEqual(result["detail"][0]["toDate"], "2026-03-31")
         self.assertEqual(result["detail"][0]["taxAmount"], 128.5)
 
+    def test_build_sample_config_accepts_year_and_period(self) -> None:
+        """脚手架应允许显式指定所属年和所属期。"""
+
+        config = payment_workflow.build_sample_config(2025, 12)
+
+        self.assertEqual(config["year"], 2025)
+        self.assertEqual(config["period"], 12)
+        self.assertEqual(config["max_poll_attempts"], 30)
+        self.assertEqual(
+            config["steps"]["payment"]["detail"][0]["fromDate"],
+            "2025-12-01",
+        )
+
     def test_build_payment_args_rejects_invalid_date_range(self) -> None:
         """缴款明细日期倒挂时应直接报错。"""
 

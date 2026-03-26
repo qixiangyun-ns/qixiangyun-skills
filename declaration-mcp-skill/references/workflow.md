@@ -11,7 +11,7 @@
 | `period` | integer | 是 | 所属期 |
 | `accountId` | string/null | 否 | 多账号场景可传 |
 | `poll_interval_seconds` | integer | 否 | 查询类工具轮询间隔，默认 10 |
-| `max_poll_attempts` | integer | 否 | 最大轮询次数，默认 12 |
+| `max_poll_attempts` | integer | 否 | 最大轮询次数，默认 30 |
 | `steps` | object | 是 | 分步骤配置 |
 
 ## 步骤顺序

@@ -15,6 +15,7 @@ from qxy_mcp_lib import (
     SERVICE_LABELS,
     call_tool,
     describe_tool,
+    load_credentials,
     list_services,
     list_tools,
     parse_json_mapping,
@@ -52,6 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--args", help="工具参数 JSON，支持 @文件路径")
     parser.add_argument("--list-services", action="store_true", help="列出所有服务")
     parser.add_argument("--list-tools", action="store_true", help="列出服务下的工具")
+    parser.add_argument("--check-config", action="store_true", help="检查凭证是否已配置")
     parser.add_argument(
         "--describe-tool",
         metavar="TOOL_NAME",
@@ -79,6 +81,18 @@ def main() -> int:
                     }
                     for service_name, endpoint in services.items()
                 ]
+            )
+            return 0
+
+        if args.check_config:
+            credentials = load_credentials()
+            _dump_json(
+                {
+                    "success": True,
+                    "client_appkey": credentials["client_appkey"],
+                    "client_secret_masked": "***",
+                    "message": "凭证已找到。实际有效性会在首次真实工具调用时进一步校验。",
+                }
             )
             return 0
 

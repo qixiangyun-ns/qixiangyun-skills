@@ -76,6 +76,10 @@ class Config:
 
                         if key == "QXY_API_KEY":
                             self._parse_api_key(value)
+                        elif key == "QXY_CLIENT_APPKEY":
+                            self.app_key = value or None
+                        elif key == "QXY_CLIENT_SECRET":
+                            self.app_secret = value or None
                         elif key == "QXY_API_HOST":
                             self.api_host = value or self.DEFAULT_API_HOST
                         elif key == "QXY_RSA_PUBLIC_KEY":
@@ -83,6 +87,14 @@ class Config:
 
     def _load_from_env(self):
         """从环境变量加载配置"""
+        env_appkey = os.environ.get("QXY_CLIENT_APPKEY")
+        if env_appkey:
+            self.app_key = env_appkey.strip() or None
+
+        env_secret = os.environ.get("QXY_CLIENT_SECRET")
+        if env_secret:
+            self.app_secret = env_secret.strip() or None
+
         env_key = os.environ.get("QXY_API_KEY")
         if env_key:
             self._parse_api_key(env_key)
@@ -122,14 +134,16 @@ class Config:
             api_key: 完整的API密钥
             api_host: API地址（可选）
         """
+        self._parse_api_key(api_key)
         content = f"""# Tax Login Skill 配置文件
 # 由配置向导自动生成
 #
 # API密钥申请：https://open.qixiangyun.com
-# 密钥格式：{{client_appkey}}.{{client_secret}}
+# 推荐配置：QXY_CLIENT_APPKEY + QXY_CLIENT_SECRET
 
 # 企享云 API 密钥
-QXY_API_KEY={api_key}
+QXY_CLIENT_APPKEY={self.app_key}
+QXY_CLIENT_SECRET={self.app_secret}
 
 # API 服务地址
 QXY_API_HOST={api_host or self.DEFAULT_API_HOST}
@@ -140,7 +154,6 @@ QXY_API_HOST={api_host or self.DEFAULT_API_HOST}
             f.write(content)
 
         # 重新加载
-        self._parse_api_key(api_key)
         if api_host:
             self.api_host = api_host
 
@@ -157,7 +170,7 @@ QXY_API_HOST={api_host or self.DEFAULT_API_HOST}
         if not self.app_key or not self.app_secret:
             raise ConfigError(
                 "API密钥未配置\n"
-                "请设置环境变量 QXY_API_KEY\n"
+                "请设置环境变量 QXY_CLIENT_APPKEY 和 QXY_CLIENT_SECRET\n"
                 "或在当前 skill 根目录创建 .env 文件\n"
                 "API密钥申请：https://open.qixiangyun.com"
             )

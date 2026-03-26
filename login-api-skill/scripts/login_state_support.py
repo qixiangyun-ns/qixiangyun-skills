@@ -18,6 +18,9 @@ class LoginStateError(RuntimeError):
     """登录联动状态异常。"""
 
 
+DEFAULT_LOGIN_STATE_MAX_AGE_SECONDS = 12 * 60 * 60
+
+
 def resolve_skills_root(current_file: str | Path) -> Path:
     """根据当前脚本路径尽量稳健地推导 skills 根目录。"""
 
@@ -137,6 +140,29 @@ def ensure_login_prerequisites(
         raise LoginStateError(
             "当前共享登录态不是可用状态。请先使用 `login-api-skill` 重新完成企业登录。"
         )
+
+    updated_at = str(state.get("updatedAt") or "").strip()
+    if updated_at:
+        try:
+            normalized_updated_at = updated_at.replace("Z", "+00:00")
+            updated_at_dt = datetime.fromisoformat(normalized_updated_at)
+            max_age_seconds = int(
+                os.environ.get(
+                    "QXY_LOGIN_STATE_MAX_AGE_SECONDS",
+                    str(DEFAULT_LOGIN_STATE_MAX_AGE_SECONDS),
+                )
+            )
+            age_seconds = (
+                datetime.now(timezone.utc) - updated_at_dt.astimezone(timezone.utc)
+            ).total_seconds()
+            if age_seconds > max_age_seconds:
+                raise LoginStateError(
+                    "共享登录态已过期。请重新运行 `login-api-skill` 完成登录后再继续。"
+                )
+        except ValueError:
+            raise LoginStateError(
+                "共享登录态时间戳格式错误。请重新运行 `login-api-skill` 完成登录。"
+            )
 
     state_agg_org_id = str(state.get("aggOrgId") or "").strip()
     state_account_id = str(state.get("accountId") or "").strip()
