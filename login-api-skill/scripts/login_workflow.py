@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sys
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,24 @@ def _write_json(payload: Any, output_path: str | None = None) -> None:
     sys.stdout.write("\n")
 
 
+def _resolve_secret(
+    *,
+    direct_value: str | None,
+    env_var_name: str | None,
+    field_name: str,
+) -> str:
+    """优先解析命令行密文，其次从环境变量读取敏感值。"""
+
+    if direct_value:
+        return direct_value
+    if env_var_name:
+        env_value = os.environ.get(env_var_name)
+        if env_value:
+            return env_value
+        raise ValueError(f"环境变量 `{env_var_name}` 未设置，无法读取 {field_name}。")
+    raise ValueError(f"`{field_name}` 未提供。")
+
+
 def build_parser() -> argparse.ArgumentParser:
     """构建 CLI 参数解析器。"""
 
@@ -72,7 +91,11 @@ def build_parser() -> argparse.ArgumentParser:
     create_natural = subparsers.add_parser("create-natural-account", help="创建自然人账号")
     create_natural.add_argument("--area-code", required=True, help="地区代码，如 3100")
     create_natural.add_argument("--phone", required=True, help="手机号")
-    create_natural.add_argument("--password", required=True, help="登录密码")
+    create_natural.add_argument("--password", help="登录密码")
+    create_natural.add_argument(
+        "--password-env",
+        help="从指定环境变量读取登录密码，优先于在 shell 中明文传参",
+    )
     create_natural.add_argument("--username", help="用户名；默认与手机号相同")
 
     start_login = subparsers.add_parser("start-natural-login", help="发送自然人登录验证码")
@@ -96,7 +119,11 @@ def build_parser() -> argparse.ArgumentParser:
     create_multi.add_argument("--agg-org-id", required=True, help="企业 aggOrgId")
     create_multi.add_argument("--area-code", required=True, help="地区代码，如 3100")
     create_multi.add_argument("--phone", required=True, help="办税小号手机号")
-    create_multi.add_argument("--password", required=True, help="办税小号密码")
+    create_multi.add_argument("--password", help="办税小号密码")
+    create_multi.add_argument(
+        "--password-env",
+        help="从指定环境变量读取办税小号密码，优先于在 shell 中明文传参",
+    )
     create_multi.add_argument("--username", help="办税小号用户名；默认与手机号相同")
 
     enterprise_ready = subparsers.add_parser(
@@ -151,11 +178,16 @@ def main() -> int:
         workflow = TaxLoginWorkflow(client)
 
         if args.command == "create-natural-account":
+            password = _resolve_secret(
+                direct_value=args.password,
+                env_var_name=args.password_env,
+                field_name="自然人登录密码",
+            )
             _write_json(
                 workflow.create_natural_person_account(
                     area_code=args.area_code,
                     phone=args.phone,
-                    password=args.password,
+                    password=password,
                     username=args.username,
                 )
             )
@@ -199,12 +231,17 @@ def main() -> int:
             return 0
 
         if args.command == "create-multi-account":
+            password = _resolve_secret(
+                direct_value=args.password,
+                env_var_name=args.password_env,
+                field_name="办税小号密码",
+            )
             _write_json(
                 workflow.create_multi_account(
                     agg_org_id=args.agg_org_id,
                     area_code=args.area_code,
                     phone=args.phone,
-                    password=args.password,
+                    password=password,
                     username=args.username,
                 )
             )
