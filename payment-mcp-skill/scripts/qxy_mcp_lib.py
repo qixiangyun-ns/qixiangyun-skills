@@ -6,6 +6,8 @@ from __future__ import annotations
 import json
 import logging
 import os
+import socket
+import ssl
 import time
 from pathlib import Path
 from typing import Any, Mapping
@@ -16,6 +18,12 @@ LOGGER = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2024-11-05"
 DEFAULT_TIMEOUT_SECONDS = 30
+DEFAULT_TRANSPORT_RETRY_COUNT = 2
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover - 运行环境不一定安装 certifi
+    certifi = None
 
 SERVICE_ENDPOINTS: dict[str, str] = {
     "tax_payment": "https://mcp.qixiangyun.com/mcp/tax_payment-http/",
@@ -117,6 +125,77 @@ class QXYAuthError(QXYMCPError):
 
 class QXYWorkflowError(QXYMCPError):
     """缴款闭环流程编排异常。"""
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """读取布尔环境变量。"""
+
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    """构建 HTTPS 调用所用的 SSL 上下文。"""
+
+    if _env_flag("QXY_SSL_INSECURE", default=False):
+        context = ssl._create_unverified_context()
+        context.check_hostname = False
+        return context
+
+    ca_bundle = os.environ.get("QXY_SSL_CA_BUNDLE", "").strip()
+    if ca_bundle:
+        context = ssl.create_default_context(cafile=ca_bundle)
+    elif certifi is not None:
+        context = ssl.create_default_context(cafile=certifi.where())
+    else:
+        context = ssl.create_default_context()
+
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
+    return context
+
+
+def _is_retryable_transport_error(exc: Exception) -> bool:
+    """判断传输层异常是否适合短重试。"""
+
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return False
+    if isinstance(exc, ssl.CertificateError):
+        return False
+    if isinstance(exc, ssl.SSLEOFError):
+        return True
+    if isinstance(exc, ssl.SSLError):
+        message = str(exc).lower()
+        retry_keywords = ("timed out", "timeout", "eof", "unexpected eof", "wrong version number")
+        return any(keyword in message for keyword in retry_keywords)
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, socket.timeout):
+        return True
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        if isinstance(reason, Exception):
+            return _is_retryable_transport_error(reason)
+        reason_text = str(reason).lower()
+        retry_keywords = ("timed out", "timeout", "tempor", "reset", "refused", "eof")
+        return any(keyword in reason_text for keyword in retry_keywords)
+    return False
+
+
+def _format_transport_error(endpoint: str, exc: Exception) -> str:
+    """构造更清晰的传输层报错。"""
+
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return f"SSL 证书校验失败: {exc}；endpoint={endpoint}"
+    if isinstance(exc, ssl.CertificateError):
+        return f"SSL 主机名校验失败: {exc}；endpoint={endpoint}"
+    if isinstance(exc, ssl.SSLError):
+        return f"SSL 握手失败: {exc}；endpoint={endpoint}"
+    if isinstance(exc, URLError):
+        return f"网络连接失败: {exc.reason}；endpoint={endpoint}"
+    return f"网络传输失败: {exc}；endpoint={endpoint}"
 
 
 def _find_env_file(start_path: Path | None = None) -> Path | None:
@@ -280,14 +359,36 @@ def _send_jsonrpc(
         method="POST",
     )
 
-    try:
-        with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS) as response:
-            new_session_id = response.headers.get("Mcp-Session-Id") or session_id
-            body_text = response.read().decode("utf-8")
-    except HTTPError as exc:
-        raise QXYMCPError(f"HTTP 错误 {exc.code}: {exc.reason}") from exc
-    except URLError as exc:
-        raise QXYMCPError(f"网络连接失败: {exc.reason}") from exc
+    ssl_context = _build_ssl_context()
+    max_transport_attempts = int(os.environ.get("QXY_TRANSPORT_RETRY_COUNT", str(DEFAULT_TRANSPORT_RETRY_COUNT))) + 1
+    last_transport_error: Exception | None = None
+
+    for attempt in range(1, max_transport_attempts + 1):
+        try:
+            with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS, context=ssl_context) as response:
+                new_session_id = response.headers.get("Mcp-Session-Id") or session_id
+                body_text = response.read().decode("utf-8")
+            break
+        except HTTPError as exc:
+            raise QXYMCPError(f"HTTP 错误 {exc.code}: {exc.reason}；endpoint={endpoint}") from exc
+        except (ssl.SSLError, URLError, TimeoutError, socket.timeout) as exc:
+            last_transport_error = exc
+            if attempt < max_transport_attempts and _is_retryable_transport_error(exc):
+                backoff_seconds = min(2 ** (attempt - 1), 4)
+                LOGGER.warning(
+                    "MCP 传输异常，准备第 %s/%s 次重试，endpoint=%s，原因=%s",
+                    attempt + 1,
+                    max_transport_attempts,
+                    endpoint,
+                    exc,
+                )
+                time.sleep(backoff_seconds)
+                continue
+            raise QXYMCPError(_format_transport_error(endpoint, exc)) from exc
+    else:  # pragma: no cover - 理论上 break/raise 会提前结束
+        if last_transport_error is not None:
+            raise QXYMCPError(_format_transport_error(endpoint, last_transport_error)) from last_transport_error
+        raise QXYMCPError(f"网络传输失败，未得到有效响应；endpoint={endpoint}")
 
     result_data = _parse_response_body(body_text)
     if "error" in result_data:
@@ -516,6 +617,8 @@ def validate_workflow_config(config: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("`year` 必须是整数。")
     if not isinstance(period, int):
         raise ValueError("`period` 必须是整数。")
+    if period < 1 or period > 12:
+        raise ValueError("`period` 必须在 1 到 12 之间，表示申报月份。")
     if not isinstance(steps, dict):
         raise ValueError("`steps` 必须是对象。")
 

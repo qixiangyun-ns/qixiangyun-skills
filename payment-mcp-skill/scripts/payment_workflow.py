@@ -32,28 +32,50 @@ STEP_ORDER: tuple[str, ...] = (
 )
 
 
+def _validate_filing_period(period: int) -> None:
+    """校验申报月份范围。"""
+
+    if period < 1 or period > 12:
+        raise ValueError("`period` 必须在 1 到 12 之间，表示申报月份。")
+
+
 def _resolve_sample_year_period(
     year: int | None = None,
     period: int | None = None,
 ) -> tuple[int, int]:
-    """解析样例配置使用的所属年和所属期。"""
+    """解析样例配置使用的申报月份。"""
 
     today = date.today()
-    return year or today.year, period or today.month
+    sample_year = year or today.year
+    sample_period = period or today.month
+    _validate_filing_period(sample_period)
+    return sample_year, sample_period
 
 
-def _month_range(year: int, period: int) -> tuple[str, str]:
-    """根据所属年月返回当月起止日期。"""
+def _month_range(year: int, month: int) -> tuple[str, str]:
+    """根据自然月返回起止日期。"""
 
-    last_day = calendar.monthrange(year, period)[1]
-    return f"{year:04d}-{period:02d}-01", f"{year:04d}-{period:02d}-{last_day:02d}"
+    last_day = calendar.monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-01", f"{year:04d}-{month:02d}-{last_day:02d}"
+
+
+def _previous_month_range(year: int, period: int) -> tuple[str, str]:
+    """根据申报月份返回上一个自然月起止日期。"""
+
+    _validate_filing_period(period)
+    target_year = year
+    target_month = period - 1
+    if target_month == 0:
+        target_year -= 1
+        target_month = 12
+    return _month_range(target_year, target_month)
 
 
 def build_sample_config(year: int | None = None, period: int | None = None) -> dict[str, Any]:
     """生成示例配置。"""
 
     sample_year, sample_period = _resolve_sample_year_period(year, period)
-    month_start, month_end = _month_range(sample_year, sample_period)
+    month_start, month_end = _previous_month_range(sample_year, sample_period)
     return {
         "aggOrgId": "请替换为企业ID",
         "year": sample_year,
@@ -444,13 +466,13 @@ def run_workflow(config: dict[str, Any], only_steps: set[str] | None = None) -> 
 def build_parser() -> argparse.ArgumentParser:
     """构建 CLI 参数解析器。"""
 
-    parser = argparse.ArgumentParser(description="企享云缴款闭环编排脚本")
+    parser = argparse.ArgumentParser(description="企享云缴款闭环编排脚本（`period` 表示申报月份）")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     scaffold_parser = subparsers.add_parser("scaffold-config", help="生成配置样例")
     scaffold_parser.add_argument("--output", help="输出文件路径；不传则打印到标准输出")
-    scaffold_parser.add_argument("--year", type=int, help="所属年；默认使用当前年份")
-    scaffold_parser.add_argument("--period", type=int, help="所属期；默认使用当前月份")
+    scaffold_parser.add_argument("--year", type=int, help="申报年份；默认使用当前年份")
+    scaffold_parser.add_argument("--period", type=int, help="申报月份；默认使用当前月份")
 
     run_parser = subparsers.add_parser("run", help="执行缴款闭环")
     run_parser.add_argument("--config", required=True, help="工作流配置 JSON 文件")
@@ -475,6 +497,19 @@ def _write_json(payload: Any, output_path: str | None = None) -> None:
 
     json.dump(payload, sys.stdout, ensure_ascii=False, indent=2)
     sys.stdout.write("\n")
+
+
+def _write_error_payload(exc: Exception) -> None:
+    """输出结构化错误，便于上层代理稳定解析。"""
+
+    payload = {
+        "success": False,
+        "error": {
+            "type": exc.__class__.__name__,
+            "message": str(exc),
+        },
+    }
+    _write_json(payload)
 
 
 def main() -> int:
@@ -507,6 +542,7 @@ def main() -> int:
         ValueError,
         json.JSONDecodeError,
     ) as exc:
+        _write_error_payload(exc)
         LOGGER.error("%s", exc)
         return 2
 

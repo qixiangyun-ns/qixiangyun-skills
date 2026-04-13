@@ -6,7 +6,6 @@ Tax Login Skill - 工具函数
 
 import hashlib
 import base64
-
 try:
     from cryptography.hazmat.backends import default_backend
     from cryptography.hazmat.primitives import serialization
@@ -89,9 +88,15 @@ def rsa_encrypt(data: str, public_key_base64: str) -> str:
     return base64.b64encode(encrypted_data).decode('utf-8')
 
 
-def build_signature(method: str, content_md5: str, req_date: str,
-                    access_token: str, app_secret: str,
-                    app_key: str) -> str:
+def build_signature(
+    method: str,
+    path: str,
+    content_md5: str,
+    req_date: str,
+    access_token: str,
+    app_secret: str,
+    app_key: str,
+) -> str:
     """
     构建API请求签名
 
@@ -102,6 +107,7 @@ def build_signature(method: str, content_md5: str, req_date: str,
 
     Args:
         method: HTTP方法（POST）
+        path: 请求路径；当前签名规则不参与计算，保留该参数用于兼容现有调用方
         content_md5: 请求体MD5
         req_date: 请求时间戳（毫秒）
         access_token: 访问令牌
@@ -111,7 +117,9 @@ def build_signature(method: str, content_md5: str, req_date: str,
     Returns:
         完整的请求签名
     """
-    to_sign = f"{method}_{content_md5}_{req_date}_{access_token}_{app_secret}"
-    md5_result = md5(to_sign)
-    base64_result = base64_encode(md5_result)
-    return f"API-SV1:{app_key}:{base64_result}"
+    normalized_method = method.strip().upper()
+    to_sign = "_".join(
+        [normalized_method, content_md5, req_date, access_token, app_secret]
+    )
+    signature = base64_encode(md5(to_sign))
+    return f"API-SV1:{app_key}:{signature}"

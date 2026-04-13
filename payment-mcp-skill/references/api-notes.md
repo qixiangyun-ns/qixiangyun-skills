@@ -24,6 +24,8 @@
 
 - 发起 tool：`load_payment_task`
 - 查询 tool：`query_tax_payment_task_result_auto`
+- 顶层 `period` 表示申报月份，不是税款所属期月份
+- 例如 2025 年 4 月办理 3 月所属期事项时，应传 `period=4`，同时明细中的 `fromDate/toDate` 传 `2025-03-01` 到 `2025-03-31`
 - `detail` 为必填数组，每个明细至少包含：
   - `yzpzzlDm`
   - `fromDate`

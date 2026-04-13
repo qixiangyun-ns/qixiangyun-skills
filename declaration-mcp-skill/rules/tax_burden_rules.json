@@ -1,0 +1,137 @@
+{
+  "industries": [
+    {
+      "category": "重工业/资本密集",
+      "industry_name": "烟草制品业",
+      "min_rate": 7.0,
+      "max_rate": 10.0,
+      "analysis": "税负极高，暴利行业，税局重点稽查对象。"
+    },
+    {
+      "category": "重工业/资本密集",
+      "industry_name": "电力、热力生产",
+      "min_rate": 5.0,
+      "max_rate": 8.0,
+      "analysis": "进项抵扣有限，毛利高，税负偏高。"
+    },
+    {
+      "category": "重工业/资本密集",
+      "industry_name": "石油加工、炼焦",
+      "min_rate": 4.0,
+      "max_rate": 6.0,
+      "analysis": "受油价影响，通常略高于制造业平均。"
+    },
+    {
+      "category": "重工业/资本密集",
+      "industry_name": "医药制造业",
+      "min_rate": 4.5,
+      "max_rate": 7.0,
+      "analysis": "高毛利、高研发，但进项税少，整体税负偏高。"
+    },
+    {
+      "category": "制造业/中流砥柱",
+      "industry_name": "农副食品加工",
+      "min_rate": 3.5,
+      "max_rate": 5.0,
+      "analysis": "门槛低，竞争激烈，毛利薄，税负适中。"
+    },
+    {
+      "category": "制造业/中流砥柱",
+      "industry_name": "纺织、服装服饰",
+      "min_rate": 3.0,
+      "max_rate": 4.5,
+      "analysis": "劳动密集型，进项主要是布料，税负中等。"
+    },
+    {
+      "category": "制造业/中流砥柱",
+      "industry_name": "木材、竹制品",
+      "min_rate": 3.0,
+      "max_rate": 4.5,
+      "analysis": "原材料可抵扣，税负相对较低。"
+    },
+    {
+      "category": "制造业/中流砥柱",
+      "industry_name": "通用/专用设备",
+      "min_rate": 3.5,
+      "max_rate": 5.5,
+      "analysis": "装备制造，毛利尚可，税负正常。"
+    },
+    {
+      "category": "制造业/中流砥柱",
+      "industry_name": "计算机/电子制造",
+      "min_rate": 2.5,
+      "max_rate": 4.0,
+      "analysis": "供应链复杂，税负偏低。"
+    },
+    {
+      "category": "流通/贸易类",
+      "industry_name": "批发和零售业",
+      "min_rate": 0.8,
+      "max_rate": 2.0,
+      "analysis": "薄利多销，税负最低。"
+    },
+    {
+      "category": "流通/贸易类",
+      "industry_name": "零售贸易",
+      "min_rate": 1.0,
+      "max_rate": 2.5,
+      "analysis": "终端销售，税负稳定。"
+    },
+    {
+      "category": "建筑/房地产",
+      "industry_name": "建筑业",
+      "min_rate": 2.0,
+      "max_rate": 3.5,
+      "analysis": "受分包模式影响，税负波动较大。"
+    },
+    {
+      "category": "建筑/房地产",
+      "industry_name": "房地产开发",
+      "min_rate": 3.0,
+      "max_rate": 4.5,
+      "analysis": "土地进项不可抵扣，税负较高。"
+    },
+    {
+      "category": "交通运输/物流",
+      "industry_name": "交通运输服务",
+      "min_rate": 2.0,
+      "max_rate": 3.0,
+      "analysis": "燃油与车辆维修可抵扣，税负较低。"
+    },
+    {
+      "category": "交通运输/物流",
+      "industry_name": "物流辅助服务",
+      "min_rate": 4.0,
+      "max_rate": 6.0,
+      "analysis": "人力成本为主，税负偏高。"
+    },
+    {
+      "category": "服务业/高新",
+      "industry_name": "软件/信息技术",
+      "min_rate": 3.0,
+      "max_rate": 5.0,
+      "analysis": "享受即征即退时，实际税负通常控制在 3% 左右。"
+    },
+    {
+      "category": "服务业/高新",
+      "industry_name": "租赁服务",
+      "min_rate": 4.0,
+      "max_rate": 6.0,
+      "analysis": "无进项抵扣时税负偏高。"
+    },
+    {
+      "category": "服务业/高新",
+      "industry_name": "商务服务/咨询",
+      "min_rate": 5.0,
+      "max_rate": 7.0,
+      "analysis": "纯人力成本行业，税负较高。"
+    },
+    {
+      "category": "服务业/高新",
+      "industry_name": "餐饮/住宿",
+      "min_rate": 2.0,
+      "max_rate": 4.0,
+      "analysis": "受农产品进项影响，税负相对温和。"
+    }
+  ]
+}

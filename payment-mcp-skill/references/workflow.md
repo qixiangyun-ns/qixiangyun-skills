@@ -8,11 +8,17 @@
 |---|---|---|---|
 | `aggOrgId` | string | 是 | 企业 ID |
 | `year` | integer | 是 | 年份 |
-| `period` | integer | 是 | 所属期 |
+| `period` | integer | 是 | 申报月份 |
 | `accountId` | string/null | 否 | 多账号场景可传 |
 | `poll_interval_seconds` | integer | 否 | 查询类工具轮询间隔，默认 10 |
 | `max_poll_attempts` | integer | 否 | 最大轮询次数，默认 12 |
 | `steps` | object | 是 | 分步骤配置 |
+
+说明：
+
+- 顶层 `period` 表示申报月份
+- `payment.detail[].fromDate/toDate` 与 `certificate.zsxmDtos[].ssqQ/ssqZ` 表示实际税款所属期起止
+- 脚手架默认会按申报月份自动回推出上一个自然月的所属期示例
 
 ## 步骤顺序
 

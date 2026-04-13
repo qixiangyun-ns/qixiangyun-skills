@@ -24,6 +24,8 @@
 
 - `load_init_data_task` 用于发起初始化
 - `get_init_data` 用于取初始化结果
+- 顶层 `period` 表示申报月份，不是税款所属期月份
+- 例如办理 2026 年 3 月所属期月报时，4 月应传 `year=2026`、`period=4`
 - `get_init_data` 常见参数示例：
 
 ```json

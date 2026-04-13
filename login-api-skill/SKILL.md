@@ -1,257 +1,95 @@
 ---
 name: login-api-skill
-description: 通过企享云开放平台 API 处理税务登录相关任务，包括自然人账号创建、自然人登录、企业列表获取、企业订购、多账号创建和企业账号登录就绪校验。使用 bundled Python scripts 严格通过 API 调用，适用于需要按 7 步登录流程编排税务登录能力、避免 curl 或零散 OpenAPI 调用的场景。
+description: 使用单入口脚本完成企享云 7 步登录链路。默认且唯一推荐入口是 `run-full-login`；代理模型不得自行拆分自然人登录、企业列表、订购、多账号、企业登录等子步骤。
 ---
 
 # 登录 API Skill
 
-基于企享云开放平台 API 实现税务登录，不依赖 MCP、不走浏览器自动化。
+该 skill 的目标只有一个：完成整条登录链路，并把最终企业登录态写入 skills 根目录的 `.qxy_login_state.json`。
 
-该 skill 是 `declaration-mcp-skill` 和 `payment-mcp-skill` 的前置依赖。
-完成企业账号登录就绪校验后，会自动在 skills 仓库根目录写入共享登录态 `.qxy_login_state.json`，
-供申报和缴款 skill 复用。
+## 强制规则
 
-## 何时激活
+1. 对于“帮我登录”“帮我进行登录”“用这个账号登录”这类请求，只允许执行 `python3 scripts/login_workflow.py run-full-login ...`。
+2. 代理模型不得自行拆分 7 步，不得先调用 `start-natural-login`、`list-enterprises`、`subscribe-enterprise-service`、`create-multi-account` 等分步命令来拼流程。
+3. 只有 `final_success=true` 才表示整条链路完成。
+4. 如果返回 `waiting_for_user_input=true`，代理只能向用户索取验证码，然后再次执行同一个 `run-full-login` 命令续跑。
+5. 在自然人链路中，不得使用、推断、解释或输出任何 `orgId/aggOrgId` 字段；自然人阶段唯一合法关键标识是 `accountId`。
+6. 只有进入企业链路后，才允许出现 `aggOrgId/orgId`。
 
-- 用户需要按“自然人创建账号 -> 自然人登录 -> 企业列表 -> 企业订购 -> 多账号创建 -> 企业账号登录”流程办税
-- 用户要用 API 而不是网页手工操作完成税务登录前置
-- 用户提到“登录 skill”“自然人账号”“多账号创建”“企业账号登录”
-
-## 运行依赖
-
-- Python 依赖见 [requirements.txt](requirements.txt)
-- 至少需要安装：`requests`、`cryptography`
-
-## 严格规则
-
-1. 所有调用都只能通过 bundled scripts：
-   - `scripts/login_workflow.py`
-   - `scripts/client.py`
-   - `scripts/workflow.py`
-2. 禁止使用 `python -c` 动态拼接导入命令，统一走 `scripts/login_workflow.py`
-3. 不要直接拼 `curl` 或手写签名逻辑
-4. 不要把 `client_appkey`、`client_secret` 硬编码到代码里
-5. 密码一律走内置 RSA 加密，不要明文透传到日志
-
-## 核心工作流
-
-### 第1步：自然人创建账号
-
-输入：
-
-- 地区
-- 手机号
-- 密码
-
-输出：
-
-- `account_id`
-- `agg_org_id`
-
-对应方法：
-
-- `TaxLoginWorkflow.create_natural_person_account`
-
-### 第2步：自然人登录
-
-拆为两个 API 动作：
-
-1. `TaxLoginWorkflow.start_natural_person_login` 发送验证码
-2. `TaxLoginWorkflow.verify_natural_person_login` 上传验证码
-
-输出：
-
-- `login_success`
-
-### 第3步：获取企业列表
-
-输入：
-
-- 自然人 `agg_org_id`
-- 自然人 `account_id`
-
-输出：
-
-- 企业名称
-- 企业税号
-- 身份类型
-
-对应方法：
-
-- `TaxLoginWorkflow.list_enterprises`
-
-### 第4步：选择目标企业
-
-输入：
-
-- 企业列表
-- 目标企业名称或税号
-
-输出：
-
-- 单个目标企业对象
-
-对应方法：
-
-- `TaxLoginWorkflow.choose_target_enterprise`
-
-### 第5步：企业服务订购
-
-输入：
-
-- 地区
-- 企业名称
-- 企业税号
-
-输出：
-
-- `agg_org_id`
-
-对应方法：
-
-- `TaxLoginWorkflow.subscribe_enterprise_service`
-
-### 第6步：多账号创建
-
-输入：
-
-- 企业 `agg_org_id`
-- 地区
-- 登录信息
-
-输出：
-
-- 多账号 `account_id`
-
-对应方法：
-
-- `TaxLoginWorkflow.create_multi_account`
-
-### 第7步：企业账号登录就绪校验
-
-输入：
-
-- 企业 `agg_org_id`
-- 多账号 `account_id`
-
-输出：
-
-- 是否可直接开展办税业务
-
-对应方法：
-
-- `TaxLoginWorkflow.login_enterprise_account`
-
-## 推荐调用方式
-
-优先使用 CLI，而不是临时拼 Python 导入：
+## 唯一推荐入口
 
 ```bash
 export QXY_LOGIN_PASSWORD='your_password'
-python3 scripts/login_workflow.py create-natural-account \
+python3 scripts/login_workflow.py run-full-login \
   --area-code 3100 \
   --phone 13800138000 \
   --password-env QXY_LOGIN_PASSWORD
 ```
 
-如果自然人账号已存在，但当前还不知道 `accountId / aggOrgId`，不要卡在 `start-natural-login`：
+可选参数：
+- `--enterprise-phone`
+- `--enterprise-password`
+- `--enterprise-password-env`
+- `--enterprise-username`
+- `--identity-type BSY`
+- `--nsrsbh`
+- `--org-name`
+- `--index`
+- `--natural-sms-code`
+- `--enterprise-sms-code`
 
-```bash
-export QXY_LOGIN_PASSWORD='your_password'
-python3 scripts/login_workflow.py start-natural-login-by-phone \
-  --area-code 3100 \
-  --phone 13800138000 \
-  --password-env QXY_LOGIN_PASSWORD
-```
+## 执行语义
 
-发送验证码：
+1. 该命令会自动执行：
+   - 自然人创建账号
+   - 自然人登录
+   - 获取企业列表
+   - 选择企业
+   - 企业服务订购
+   - 创建企业多账号
+   - 企业登录
+2. 只有在必须等待用户提供短信验证码时才允许暂停。
+3. 如果自然人验证码未提供，返回：
+   - `success=false`
+   - `final_success=false`
+   - `waiting_for_user_input=true`
+   - `user_input_kind=natural_sms_code`
+4. 如果企业验证码未提供，返回：
+   - `success=false`
+   - `final_success=false`
+   - `waiting_for_user_input=true`
+   - `user_input_kind=enterprise_sms_code`
+5. 代理模型看到中间成功时，不得口头宣布“已登录成功”；必须继续执行直到 `final_success=true`。
 
-```bash
-python3 scripts/login_workflow.py start-natural-login \
-  --agg-org-id 自然人aggOrgId \
-  --account-id 自然人accountId
-```
+## 关键约束
 
-上传验证码：
+- 自然人开户使用 `/v2/public/account/create`，`dlfs=17`
+- 自然人登录只使用 `accountId`
+- 自然人企业列表只使用 `accountId`
+- 企业订购后才获取企业 `aggOrgId/orgId`
+- 企业多账号使用 `/v2/public/account/create`，`dlfs=14`
+- 企业登录才使用 `aggOrgId + accountId`
 
-```bash
-python3 scripts/login_workflow.py verify-natural-login \
-  --task-id 验证码任务ID \
-  --sms-code 123456
-```
+## 输出
 
-获取企业列表：
+最终成功后写入：
+- `.qxy_login_state.json`
+- `.qxy_login_flow_state.json`
 
-```bash
-python3 scripts/login_workflow.py list-enterprises \
-  --natural-agg-org-id 自然人aggOrgId \
-  --natural-account-id 自然人accountId
-```
-
-订购企业并创建多账号后，执行企业登录就绪校验：
-
-```bash
-python3 scripts/login_workflow.py login-enterprise-account \
-  --agg-org-id 企业aggOrgId \
-  --account-id 企业多账号accountId
-```
-
-订购企业服务时，同时支持业务习惯参数名：
-
-```bash
-python3 scripts/login_workflow.py subscribe-enterprise-service \
-  --area-code 3100 \
-  --nsrmc 企业名称 \
-  --nsrsbh 企业税号
-```
-
-查看当前共享登录态：
-
+查看：
 ```bash
 python3 scripts/login_workflow.py show-login-state
+python3 scripts/login_workflow.py show-flow-state
 ```
 
-如果确实需要在 Python 中直接调用，再使用模块方式：
-
-```python
-from scripts import TaxLoginClient, TaxLoginWorkflow
+清理：
+```bash
+python3 scripts/login_workflow.py clear-login-state
+python3 scripts/login_workflow.py clear-flow-state
 ```
 
-完成第 7 步 `TaxLoginWorkflow.login_enterprise_account` 后：
+## 调试说明
 
-- 若返回 `ready=True`
-- 会自动写入共享登录态文件
-- 后续申报和缴款 workflow 会自动读取该登录态并复用 `accountId`
+分步命令仍保留在脚本中，仅供人工调试，不是代理默认入口。代理模型阅读本 skill 时，应忽略这些分步命令，优先且默认只使用 `run-full-login`。
 
-## 配置
-
-优先级：
-
-1. 代码显式传入
-2. 环境变量
-3. Skill 根目录内 `.env`
-
-配置项：
-
-- `QXY_CLIENT_APPKEY=...`
-- `QXY_CLIENT_SECRET=...`
-- `QXY_API_HOST=https://api.qixiangyun.com`
-- `QXY_RSA_PUBLIC_KEY=...`
-
-兼容说明：
-
-- 脚本仍兼容旧格式 `QXY_API_KEY={client_appkey}.{client_secret}`
-- 但推荐统一使用 `QXY_CLIENT_APPKEY / QXY_CLIENT_SECRET`
-
-## 说明
-
-- 第1步默认按代理业务登录 `dlfs=15` 创建自然人账号
-- 第6步默认按企业业务登录 `dlfs=9` 创建多账号
-- 第7步不会主动再次发验证码，只做“缓存有效 / 可快速登录”校验
-- 第7步成功后会自动写入共享登录态，供申报和缴款 skill 联动
-- 如果企业登录就绪校验返回“登录方式必须是14或者15”，请重新创建多账号并把 `login_mode` 调整为 `14` 或 `15`
-
-## 参考文件
-
-- 接口映射与调用约束：[references/api-notes.md](references/api-notes.md)
-- 7 步流程与输出说明：[references/workflow.md](references/workflow.md)
+默认情况下，这些分步命令不会出现在 CLI 里。只有显式设置 `QXY_LOGIN_ENABLE_DEBUG_COMMANDS=1` 时，才会开放人工调试入口。

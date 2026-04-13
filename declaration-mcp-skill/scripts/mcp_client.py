@@ -9,6 +9,7 @@ import logging
 import sys
 from typing import Any
 
+from filing_period import ensure_current_filing_period
 from qxy_mcp_lib import (
     QXYAuthError,
     QXYMCPError,
@@ -25,6 +26,23 @@ from qxy_mcp_lib import (
 LOGGER = logging.getLogger(__name__)
 
 
+def _preflight_validate_tool_args(tool_name: str, tool_args: dict[str, Any]) -> None:
+    """对高频误用的工具参数做本地预检。"""
+
+    if tool_name not in {"initiate_declaration_entry_task_auto", "load_init_data_task"}:
+        return
+    year = tool_args.get("year")
+    period = tool_args.get("period")
+    if not isinstance(year, int) or not isinstance(period, int):
+        return
+    action = (
+        "获取应申报清册"
+        if tool_name == "initiate_declaration_entry_task_auto"
+        else "初始化申报数据"
+    )
+    ensure_current_filing_period(year, period, action=action)
+
+
 def _dump_json(payload: Any) -> None:
     """将结果以 JSON 输出到标准输出。"""
 
@@ -32,11 +50,25 @@ def _dump_json(payload: Any) -> None:
     sys.stdout.write("\n")
 
 
+def _dump_error(exc: Exception) -> None:
+    """输出结构化错误，便于上层代理稳定解析。"""
+
+    _dump_json(
+        {
+            "success": False,
+            "error": {
+                "type": exc.__class__.__name__,
+                "message": str(exc),
+            },
+        }
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """构建 CLI 参数解析器。"""
 
     parser = argparse.ArgumentParser(
-        description="企享云申报 MCP 工具调用客户端",
+        description="企享云申报 MCP 工具调用客户端（`period` 表示申报月份）",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "示例:\n"
@@ -44,9 +76,9 @@ def build_parser() -> argparse.ArgumentParser:
             "  python3 scripts/mcp_client.py --service roster_entry --list-tools\n\n"
             "  python3 scripts/mcp_client.py --service roster_entry "
             "--tool initiate_declaration_entry_task_auto "
-            "--args '{\"aggOrgId\": \"4788840764917695\", \"year\": 2026, \"period\": 3}'\n\n"
+            "--args '{\"aggOrgId\": \"YOUR_AGG_ORG_ID\", \"year\": 2026, \"period\": 4}'\n\n"
             "  python3 scripts/mcp_client.py --tool query_roster_entry_task_auto "
-            "--args '{\"aggOrgId\": \"4788840764917695\", \"taskId\": \"123\"}'"
+            "--args '{\"aggOrgId\": \"YOUR_AGG_ORG_ID\", \"taskId\": \"123\"}'"
         ),
     )
     parser.add_argument("--service", help="服务别名，如 roster_entry")
@@ -111,12 +143,15 @@ def main() -> int:
 
         if args.tool:
             service_name = resolve_service_for_tool(args.service, args.tool)
-            _dump_json(call_tool(service_name, args.tool, parse_json_mapping(args.args)))
+            tool_args = parse_json_mapping(args.args)
+            _preflight_validate_tool_args(args.tool, tool_args)
+            _dump_json(call_tool(service_name, args.tool, tool_args))
             return 0
 
         parser.print_help()
         return 1
     except (QXYMCPError, QXYAuthError, ValueError, json.JSONDecodeError) as exc:
+        _dump_error(exc)
         LOGGER.error("%s", exc)
         return 2
 

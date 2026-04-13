@@ -151,7 +151,7 @@ class TaxLoginClient:
 
         # 构建请求
         full_url = f"{self.api_host}{path}"
-        body_str = json.dumps(body, ensure_ascii=False)
+        body_str = json.dumps(body, ensure_ascii=False, separators=(',', ':'))
         req_date = str(int(datetime.now().timestamp() * 1000))
         content_md5 = md5(body_str)
 
@@ -159,6 +159,7 @@ class TaxLoginClient:
         if access_token:
             req_sign = build_signature(
                 method="POST",
+                path=path,
                 content_md5=content_md5,
                 req_date=req_date,
                 access_token=access_token,
@@ -197,6 +198,7 @@ class TaxLoginClient:
                 req_date = str(int(datetime.now().timestamp() * 1000))
                 req_sign = build_signature(
                     method="POST",
+                    path=path,
                     content_md5=content_md5,
                     req_date=req_date,
                     access_token=access_token,
@@ -233,13 +235,13 @@ class TaxLoginClient:
 
     def _build_account_request_body(
         self,
-        agg_org_id: Union[str, int],
+        agg_org_id: Optional[Union[str, int]],
         dq: str,
         username: str,
         phone: str,
         password: str,
         identity_type: str = "BSY",
-        login_mode: int = 9,
+        login_mode: int = 14,
         account_id: Optional[Union[str, int]] = None,
         proxy_nsrsbh: Optional[str] = None,
         login_type: Optional[int] = None,
@@ -252,11 +254,11 @@ class TaxLoginClient:
 
         说明：
         - 兼容登录业务（新）的单账号/多账号模式
-        - 默认 `login_mode=9`，适用于企业业务登录（办税小号）
+        - 默认 `login_mode=14`，适用于企业业务登录（自传验证码）
         - 代理业务登录场景可传 `login_mode=15`
+        - 自然人登录场景可传 `login_mode=17`
         """
         body: Dict[str, Any] = {
-            "aggOrgId": agg_org_id,
             "dq": dq,
             "dlfs": login_mode,
             "gryhm": username,
@@ -264,6 +266,8 @@ class TaxLoginClient:
             "sflx": identity_type,
             "sjhm": phone,
         }
+        if agg_org_id not in (None, "", "0", 0):
+            body["aggOrgId"] = agg_org_id
 
         if account_id is not None:
             body["accountId"] = account_id
@@ -282,13 +286,13 @@ class TaxLoginClient:
 
     def create_account_record(
         self,
-        agg_org_id: Union[str, int],
+        agg_org_id: Optional[Union[str, int]],
         dq: str,
         username: str,
         phone: str,
         password: str,
         identity_type: str = "BSY",
-        login_mode: int = 9,
+        login_mode: int = 14,
         proxy_nsrsbh: Optional[str] = None,
         login_type: Optional[int] = None,
         spec_type: Optional[int] = None,
@@ -319,14 +323,14 @@ class TaxLoginClient:
 
     def update_account_record(
         self,
-        agg_org_id: Union[str, int],
+        agg_org_id: Optional[Union[str, int]],
         account_id: Union[str, int],
         dq: str,
         username: str,
         phone: str,
         password: str,
         identity_type: str = "BSY",
-        login_mode: int = 9,
+        login_mode: int = 14,
         proxy_nsrsbh: Optional[str] = None,
         login_type: Optional[int] = None,
         spec_type: Optional[int] = None,
@@ -496,7 +500,7 @@ class TaxLoginClient:
             phone=phone,
             password=password,
             identity_type="BSY",
-            login_mode=9,
+            login_mode=14,
         )
 
     def _update_account(
@@ -517,7 +521,7 @@ class TaxLoginClient:
             phone=phone,
             password=password,
             identity_type="BSY",
-            login_mode=9,
+            login_mode=14,
         )
 
     def create_or_update_account(
@@ -705,8 +709,8 @@ class TaxLoginClient:
 
     def send_etax_login_sms(
         self,
-        agg_org_id: Union[str, int],
-        account_id: Union[str, int]
+        account_id: Union[str, int],
+        agg_org_id: Optional[Union[str, int]] = None,
     ) -> Dict[str, Any]:
         """
         发送税局登录验证码。
@@ -714,10 +718,11 @@ class TaxLoginClient:
         该方法对应“登录业务（新）/发送短信验证码”。
         """
         path = "/v2/public/login/remote/etaxcookie"
-        body = {
-            "aggOrgId": agg_org_id,
+        body: Dict[str, Union[str, int]] = {
             "accountId": account_id,
         }
+        if agg_org_id not in (None, "", "0", 0):
+            body["aggOrgId"] = agg_org_id
         return self._send_request(path, body)
 
     def upload_etax_login_sms(
@@ -784,23 +789,24 @@ class TaxLoginClient:
     def query_nature_org_list(
         self,
         account_id: str,
-        agg_org_id: str
+        agg_org_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         查询自然人托管的企业列表
 
         Args:
             account_id: 自然人账号ID
-            agg_org_id: 企业ID
+            agg_org_id: 自然人侧组织ID；当前业务流程允许为空
 
         Returns:
             企业列表
         """
         path = "/v2/public/login/queryOrglist"
-        body = {
+        body: Dict[str, str] = {
             "accountId": account_id,
-            "aggOrgId": agg_org_id
         }
+        if agg_org_id not in (None, "", "0", 0):
+            body["aggOrgId"] = str(agg_org_id)
         return self._send_request(path, body)
 
     # ============================================================

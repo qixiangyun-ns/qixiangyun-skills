@@ -1,0 +1,133 @@
+{
+  "tax_codes": [
+    {
+      "code": "BDA0610606",
+      "name": "增值税及附加税费申报表（一般纳税人适用）",
+      "short_name": "增值税一般纳税人",
+      "category": "tax_declaration",
+      "period_cycle": "monthly",
+      "supported_init": true
+    },
+    {
+      "code": "BDA0610611",
+      "name": "增值税及附加税费申报表（小规模纳税人适用）",
+      "short_name": "增值税小规模",
+      "category": "tax_declaration",
+      "period_cycle": "monthly_or_quarterly",
+      "supported_init": true
+    },
+    {
+      "code": "BDA0611159",
+      "name": "中华人民共和国企业所得税月（季）度预缴纳税申报表（A类，2021年版）",
+      "short_name": "企业所得税A类",
+      "category": "tax_declaration",
+      "period_cycle": "monthly_or_quarterly",
+      "supported_init": true
+    },
+    {
+      "code": "BDA0611038",
+      "name": "中华人民共和国企业所得税月（季）度预缴纳税申报表（B类）",
+      "short_name": "企业所得税B类",
+      "category": "tax_declaration",
+      "period_cycle": "monthly_or_quarterly",
+      "supported_init": true
+    },
+    {
+      "code": "BDA0610994",
+      "name": "中华人民共和国企业所得税年度纳税申报表",
+      "short_name": "企业所得税年报",
+      "category": "tax_declaration",
+      "period_cycle": "annual",
+      "supported_init": false,
+      "unsupported_reason": "当前 skill 第一阶段未覆盖企业所得税年度汇算清缴完整闭环。"
+    },
+    {
+      "code": "BDA0610794",
+      "name": "印花税纳税申报（报告）表",
+      "short_name": "印花税",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "当前 skill 尚未沉淀印花税专用初始化与报文组装规则。"
+    },
+    {
+      "code": "BDA0610794HB",
+      "name": "印花税纳税申报（报告）表（合并）",
+      "short_name": "印花税合并",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "当前 skill 尚未沉淀印花税合并申报规则。"
+    },
+    {
+      "code": "BDA0610334",
+      "name": "文化事业建设费申报表",
+      "short_name": "文化事业建设费",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "当前 skill 尚未覆盖文化事业建设费申报闭环。"
+    },
+    {
+      "code": "BDA0610334HB",
+      "name": "文化事业建设费申报表（合并）",
+      "short_name": "文化事业建设费合并",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "当前 skill 尚未覆盖文化事业建设费合并申报闭环。"
+    },
+    {
+      "code": "BDA0610100",
+      "name": "通用申报表",
+      "short_name": "通用申报",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "通用申报场景差异较大，需按税局具体模板单独接入。"
+    },
+    {
+      "code": "BDA0611054",
+      "name": "非税收入通用申报表",
+      "short_name": "非税收入通用申报",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "当前 skill 暂未覆盖非税收入申报。"
+    },
+    {
+      "code": "BDA0610135",
+      "name": "个人所得税扣缴申报表",
+      "short_name": "个人所得税",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "个人所得税当前不支持初始化，请先跳过该税种或人工处理。"
+    },
+    {
+      "code": "BDA0610857",
+      "name": "残疾人就业保障金缴费申报表",
+      "short_name": "残保金",
+      "category": "tax_declaration",
+      "supported_init": false,
+      "unsupported_reason": "当前 skill 暂未沉淀残保金报文规则。"
+    },
+    {
+      "code": "CWBBSB",
+      "name": "财务报表月（季）度申报",
+      "short_name": "财报月季报",
+      "category": "financial_report",
+      "period_cycle": "monthly_or_quarterly",
+      "supported_init": false
+    },
+    {
+      "code": "CWBBNDSB",
+      "name": "财务报表年度申报",
+      "short_name": "财报年报",
+      "category": "financial_report",
+      "period_cycle": "annual",
+      "supported_init": false
+    },
+    {
+      "code": "CWBBJTHB",
+      "name": "集团合并财务报表年度申报",
+      "short_name": "集团合并财报",
+      "category": "financial_report",
+      "period_cycle": "annual",
+      "supported_init": false
+    }
+  ]
+}

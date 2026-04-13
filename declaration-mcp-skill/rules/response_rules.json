@@ -1,0 +1,89 @@
+{
+  "rule_set": "default",
+  "rules": [
+    {
+      "id": "declare_success",
+      "codes": ["2000"],
+      "step_names": ["tax_report", "financial_report"],
+      "normalized_status": "success",
+      "payment_threshold": 1.0,
+      "customer_visible": true,
+      "customer_message_templates": {
+        "no_payment": "您本月{tax_label}所属期{period_label}已完成申报，本期无需缴款，详细申报表数据可以查看PDF文件。",
+        "payment_required": "您本月{tax_label}所属期{period_label}已完成申报，本期缴款金额{tax_amount}元，请确认是否缴款，详细申报表数据可以查看PDF文件。"
+      },
+      "operator_advice": "申报成功后读取税额，税额大于 1 进入缴款确认，否则自动下载 PDF。"
+    },
+    {
+      "id": "already_declared",
+      "codes": ["2002", "4601"],
+      "message_keywords": ["已申报"],
+      "normalized_status": "success",
+      "payment_threshold": 1.0,
+      "customer_visible": true,
+      "customer_message_templates": {
+        "no_payment": "您本月{tax_label}所属期{period_label}已完成申报，本期无需缴款，详细申报表数据可以查看PDF文件。",
+        "payment_required": "您本月{tax_label}所属期{period_label}已完成申报，本期缴款金额{tax_amount}元，请确认是否缴款，详细申报表数据可以查看PDF文件。"
+      },
+      "operator_advice": "税局已申报时不要重复发起申报，按税额决定后续缴款或 PDF。"
+    },
+    {
+      "id": "compare_failed",
+      "codes": ["4300", "4301"],
+      "message_keywords": ["申报比对不通过", "数据比对失败"],
+      "normalized_status": "manual_review_required",
+      "customer_visible": false,
+      "operator_advice": "命中税局比对失败，需要进入人工审核；仅在显式允许时才可继续强制申报。"
+    },
+    {
+      "id": "annual_settlement_unsupported",
+      "step_names": ["init_data"],
+      "message_keywords": ["汇算清缴当前不支持操作", "敬请期待上线"],
+      "normalized_status": "failed",
+      "retryable": false,
+      "customer_visible": false,
+      "operator_advice": "平台侧暂未支持该汇算清缴初始化场景，停止自动申报并等待平台上线。"
+    },
+    {
+      "id": "service_unstable",
+      "codes": ["4998", "4999"],
+      "message_keywords": ["服务不稳定", "暂时不可用", "税局繁忙", "系统异常", "核心征管", "超时"],
+      "normalized_status": "pending",
+      "retryable": true,
+      "customer_visible": false,
+      "operator_advice": "税局侧不稳定，进入长退避重试计划。"
+    },
+    {
+      "id": "copy_tax_required",
+      "message_keywords": ["抄报税"],
+      "normalized_status": "failed",
+      "customer_visible": true,
+      "customer_message_template": "您当前企业是否还存在税控盘，存在请自行操作抄税流程，操作完成后请告知我，我会自动启动申报流程。",
+      "operator_advice": "请先完成抄报税后再继续自动申报。"
+    },
+    {
+      "id": "period_mismatch",
+      "codes": ["4302"],
+      "message_keywords": ["所属期", "认定"],
+      "normalized_status": "failed",
+      "customer_visible": false,
+      "operator_advice": "需重新校验清册所属期或纳税人认定类型，必要时重新获取清册。"
+    },
+    {
+      "id": "past_due_not_declared",
+      "codes": ["4601"],
+      "message_keywords": ["往期未申报"],
+      "normalized_status": "failed",
+      "customer_visible": true,
+      "customer_message_template": "您存在往期的增值税未申报，需要您先线下尽快处理逾期申报事项，避免产生滞纳金。",
+      "operator_advice": "存在往期未申报时暂不继续自动办理。"
+    },
+    {
+      "id": "no_need_to_handle",
+      "message_keywords": ["无需办理"],
+      "normalized_status": "manual_review_required",
+      "customer_visible": false,
+      "operator_advice": "需重新获取清册并结合申报查询判断是无需办理、已申报还是待申报。"
+    }
+  ]
+}

@@ -120,7 +120,7 @@ python3 scripts/mcp_client.py \
 python3 scripts/mcp_client.py \
   --service tax_payment \
   --tool query_tax_payment_task_result_auto \
-  --args '{"aggOrgId":"4788840764917695","taskId":"任务ID"}'
+  --args '{"aggOrgId":"YOUR_AGG_ORG_ID","taskId":"任务ID"}'
 ```
 
 生成闭环配置模板：
@@ -128,9 +128,14 @@ python3 scripts/mcp_client.py \
 ```bash
 python3 scripts/payment_workflow.py scaffold-config \
   --year 2026 \
-  --period 3 \
+  --period 4 \
   --output /tmp/payment-config.json
 ```
+
+说明：
+
+- 顶层 `period` 表示申报月份，不是税款所属期月份
+- 例如 2026 年 4 月办理 3 月所属期缴款或完税证明时，应传 `year=2026`、`period=4`
 
 执行缴款闭环：
 

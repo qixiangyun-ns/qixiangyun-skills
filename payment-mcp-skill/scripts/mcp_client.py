@@ -32,6 +32,20 @@ def _dump_json(payload: Any) -> None:
     sys.stdout.write("\n")
 
 
+def _dump_error(exc: Exception) -> None:
+    """输出结构化错误，便于上层代理稳定解析。"""
+
+    _dump_json(
+        {
+            "success": False,
+            "error": {
+                "type": exc.__class__.__name__,
+                "message": str(exc),
+            },
+        }
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     """构建 CLI 参数解析器。"""
 
@@ -45,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
             "  python3 scripts/mcp_client.py --service tax_payment "
             "--tool load_payment_task --args @/tmp/payment.json\n\n"
             "  python3 scripts/mcp_client.py --tool query_wszm_parse_task_result_auto "
-            "--args '{\"aggOrgId\": \"4788840764917695\", \"taskId\": \"123\"}'"
+            "--args '{\"aggOrgId\": \"YOUR_AGG_ORG_ID\", \"taskId\": \"123\"}'"
         ),
     )
     parser.add_argument("--service", help="服务别名，如 tax_payment")
@@ -116,6 +130,7 @@ def main() -> int:
         parser.print_help()
         return 1
     except (QXYMCPError, QXYAuthError, ValueError, json.JSONDecodeError) as exc:
+        _dump_error(exc)
         LOGGER.error("%s", exc)
         return 2
 

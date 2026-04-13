@@ -1,0 +1,166 @@
+{
+  "success": true,
+  "status": "awaiting_financial_report",
+  "aggOrgId": "ENT-001",
+  "accountId": "ACC-LOGIN-001",
+  "display_name": "企业一",
+  "year": 2026,
+  "period": 4,
+  "login": {
+    "aggOrgId": "4788840764917695",
+    "accountId": "ACC-LOGIN-001",
+    "source": "cache"
+  },
+  "config": {
+    "aggOrgId": "ENT-001",
+    "year": 2026,
+    "period": 4,
+    "accountId": "ACC-LOGIN-001",
+    "display_name": "企业一",
+    "financial_report_input": null,
+    "vat_adjustment": {
+      "no_ticket_income_amount": 0.0
+    }
+  },
+  "checkpoint_path": "/Users/xueds/Python/skills/declaration-mcp-skill/.enterprise-checkpoints/ENT-001-2026-4.json",
+  "steps": {
+    "fetch_roster": {
+      "step_name": "fetch_roster",
+      "service": "roster_entry",
+      "tool": "initiate_declaration_entry_task_auto",
+      "request_payload": {
+        "aggOrgId": "ENT-001",
+        "year": 2026,
+        "period": 4,
+        "accountId": "ACC-LOGIN-001"
+      },
+      "taskId": "TASK-ROSTER-001",
+      "normalized_status": "success",
+      "poll_state": "success",
+      "attempt_count": 1,
+      "next_retry_at": null,
+      "business_code": "2000",
+      "business_message": null,
+      "raw_response": {
+        "code": "2000",
+        "data": {
+          "detail": [
+            {
+              "yzpzzlDm": "CWBBSB"
+            }
+          ]
+        }
+      },
+      "start": {
+        "taskId": "TASK-ROSTER-001"
+      },
+      "query": {
+        "state": "success",
+        "attempts": 1,
+        "result": {
+          "code": "2000",
+          "data": {
+            "detail": [
+              {
+                "yzpzzlDm": "CWBBSB"
+              }
+            ]
+          }
+        }
+      },
+      "finalized_at": "2026-04-10T06:27:02Z",
+      "detail": [
+        {
+          "yzpzzlDm": "CWBBSB"
+        }
+      ],
+      "catalog": [
+        {
+          "code": "CWBBSB",
+          "name": "财务报表月（季）度申报",
+          "short_name": "财报月季报",
+          "category": "financial_report",
+          "supported_init": false,
+          "unsupported_reason": null
+        }
+      ]
+    }
+  },
+  "roster": {
+    "step_name": "fetch_roster",
+    "service": "roster_entry",
+    "tool": "initiate_declaration_entry_task_auto",
+    "request_payload": {
+      "aggOrgId": "ENT-001",
+      "year": 2026,
+      "period": 4,
+      "accountId": "ACC-LOGIN-001"
+    },
+    "taskId": "TASK-ROSTER-001",
+    "normalized_status": "success",
+    "poll_state": "success",
+    "attempt_count": 1,
+    "next_retry_at": null,
+    "business_code": "2000",
+    "business_message": null,
+    "raw_response": {
+      "code": "2000",
+      "data": {
+        "detail": [
+          {
+            "yzpzzlDm": "CWBBSB"
+          }
+        ]
+      }
+    },
+    "start": {
+      "taskId": "TASK-ROSTER-001"
+    },
+    "query": {
+      "state": "success",
+      "attempts": 1,
+      "result": {
+        "code": "2000",
+        "data": {
+          "detail": [
+            {
+              "yzpzzlDm": "CWBBSB"
+            }
+          ]
+        }
+      }
+    },
+    "finalized_at": "2026-04-10T06:27:02Z",
+    "detail": [
+      {
+        "yzpzzlDm": "CWBBSB"
+      }
+    ],
+    "catalog": [
+      {
+        "code": "CWBBSB",
+        "name": "财务报表月（季）度申报",
+        "short_name": "财报月季报",
+        "category": "financial_report",
+        "supported_init": false,
+        "unsupported_reason": null
+      }
+    ]
+  },
+  "financial_report": null,
+  "income_tax": null,
+  "vat": null,
+  "declare_info": null,
+  "pdfs": null,
+  "tracked_periods": {},
+  "successful_declarations": [],
+  "payment_preparation": {
+    "detail": [],
+    "certificate": [],
+    "payment_config": null
+  },
+  "operator_advice": [
+    "清册包含财务报表，请先补充财报文件或财报 JSON 报文。"
+  ],
+  "updated_at": "2026-04-10T06:27:02Z"
+}

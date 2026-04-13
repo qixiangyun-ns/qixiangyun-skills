@@ -6,9 +6,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
+import socket
+import ssl
 import time
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
@@ -16,6 +19,13 @@ LOGGER = logging.getLogger(__name__)
 
 PROTOCOL_VERSION = "2024-11-05"
 DEFAULT_TIMEOUT_SECONDS = 30
+DEFAULT_LONG_BACKOFF_MINUTES: tuple[int, ...] = (30, 60, 120, 240, 300)
+DEFAULT_TRANSPORT_RETRY_COUNT = 2
+
+try:
+    import certifi
+except ImportError:  # pragma: no cover - 运行环境不一定安装 certifi
+    certifi = None
 
 SERVICE_ENDPOINTS: dict[str, str] = {
     "roster_entry": "https://mcp.qixiangyun.com/mcp/roster_entry-http/",
@@ -125,6 +135,29 @@ FAILURE_MARKERS = {
     "2",
 }
 
+SERVICE_UNSTABLE_CODES = {"4998", "4999"}
+MANUAL_REVIEW_CODES = {"4300", "4301"}
+SERVICE_UNSTABLE_KEYWORDS = (
+    "服务不稳定",
+    "暂时不可用",
+    "税局繁忙",
+    "系统异常",
+    "核心征管",
+    "超时",
+)
+MANUAL_REVIEW_KEYWORDS = (
+    "申报比对不通过",
+    "数据比对失败",
+)
+COPY_TAX_KEYWORDS = ("抄报税",)
+PENDING_MESSAGE_KEYWORDS = (
+    "还在执行中",
+    "请稍后获取",
+    "处理中",
+    "任务执行中",
+    "任务处理中",
+)
+
 
 class QXYMCPError(Exception):
     """企享云 MCP 调用异常。"""
@@ -136,6 +169,77 @@ class QXYAuthError(QXYMCPError):
 
 class QXYWorkflowError(QXYMCPError):
     """申报闭环流程编排异常。"""
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    """读取布尔环境变量。"""
+
+    raw_value = os.environ.get(name)
+    if raw_value is None:
+        return default
+    return raw_value.strip().lower() in {"1", "true", "yes", "y", "on"}
+
+
+def _build_ssl_context() -> ssl.SSLContext:
+    """构建 HTTPS 调用所用的 SSL 上下文。"""
+
+    if _env_flag("QXY_SSL_INSECURE", default=False):
+        context = ssl._create_unverified_context()
+        context.check_hostname = False
+        return context
+
+    ca_bundle = os.environ.get("QXY_SSL_CA_BUNDLE", "").strip()
+    if ca_bundle:
+        context = ssl.create_default_context(cafile=ca_bundle)
+    elif certifi is not None:
+        context = ssl.create_default_context(cafile=certifi.where())
+    else:
+        context = ssl.create_default_context()
+
+    context.check_hostname = True
+    context.verify_mode = ssl.CERT_REQUIRED
+    return context
+
+
+def _is_retryable_transport_error(exc: Exception) -> bool:
+    """判断传输层异常是否适合短重试。"""
+
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return False
+    if isinstance(exc, ssl.CertificateError):
+        return False
+    if isinstance(exc, ssl.SSLEOFError):
+        return True
+    if isinstance(exc, ssl.SSLError):
+        message = str(exc).lower()
+        retry_keywords = ("timed out", "timeout", "eof", "unexpected eof", "wrong version number")
+        return any(keyword in message for keyword in retry_keywords)
+    if isinstance(exc, TimeoutError):
+        return True
+    if isinstance(exc, socket.timeout):
+        return True
+    if isinstance(exc, URLError):
+        reason = exc.reason
+        if isinstance(reason, Exception):
+            return _is_retryable_transport_error(reason)
+        reason_text = str(reason).lower()
+        retry_keywords = ("timed out", "timeout", "tempor", "reset", "refused", "eof")
+        return any(keyword in reason_text for keyword in retry_keywords)
+    return False
+
+
+def _format_transport_error(endpoint: str, exc: Exception) -> str:
+    """构造更清晰的传输层报错。"""
+
+    if isinstance(exc, ssl.SSLCertVerificationError):
+        return f"SSL 证书校验失败: {exc}；endpoint={endpoint}"
+    if isinstance(exc, ssl.CertificateError):
+        return f"SSL 主机名校验失败: {exc}；endpoint={endpoint}"
+    if isinstance(exc, ssl.SSLError):
+        return f"SSL 握手失败: {exc}；endpoint={endpoint}"
+    if isinstance(exc, URLError):
+        return f"网络连接失败: {exc.reason}；endpoint={endpoint}"
+    return f"网络传输失败: {exc}；endpoint={endpoint}"
 
 
 def _find_env_file(start_path: Path | None = None) -> Path | None:
@@ -250,9 +354,7 @@ def resolve_service_for_tool(service_name: str | None, tool_name: str) -> str:
         return service_name
     if tool_name in TOOL_TO_SERVICE:
         return TOOL_TO_SERVICE[tool_name]
-    raise QXYMCPError(
-        f"工具 `{tool_name}` 未配置默认服务，请显式传入 --service。"
-    )
+    raise QXYMCPError(f"工具 `{tool_name}` 未配置默认服务，请显式传入 --service。")
 
 
 def _parse_response_body(body_text: str) -> dict[str, Any]:
@@ -299,14 +401,36 @@ def _send_jsonrpc(
         method="POST",
     )
 
-    try:
-        with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS) as response:
-            new_session_id = response.headers.get("Mcp-Session-Id") or session_id
-            body_text = response.read().decode("utf-8")
-    except HTTPError as exc:
-        raise QXYMCPError(f"HTTP 错误 {exc.code}: {exc.reason}") from exc
-    except URLError as exc:
-        raise QXYMCPError(f"网络连接失败: {exc.reason}") from exc
+    ssl_context = _build_ssl_context()
+    max_transport_attempts = int(os.environ.get("QXY_TRANSPORT_RETRY_COUNT", str(DEFAULT_TRANSPORT_RETRY_COUNT))) + 1
+    last_transport_error: Exception | None = None
+
+    for attempt in range(1, max_transport_attempts + 1):
+        try:
+            with urlopen(request, timeout=DEFAULT_TIMEOUT_SECONDS, context=ssl_context) as response:
+                new_session_id = response.headers.get("Mcp-Session-Id") or session_id
+                body_text = response.read().decode("utf-8")
+            break
+        except HTTPError as exc:
+            raise QXYMCPError(f"HTTP 错误 {exc.code}: {exc.reason}；endpoint={endpoint}") from exc
+        except (ssl.SSLError, URLError, TimeoutError, socket.timeout) as exc:
+            last_transport_error = exc
+            if attempt < max_transport_attempts and _is_retryable_transport_error(exc):
+                backoff_seconds = min(2 ** (attempt - 1), 4)
+                LOGGER.warning(
+                    "MCP 传输异常，准备第 %s/%s 次重试，endpoint=%s，原因=%s",
+                    attempt + 1,
+                    max_transport_attempts,
+                    endpoint,
+                    exc,
+                )
+                time.sleep(backoff_seconds)
+                continue
+            raise QXYMCPError(_format_transport_error(endpoint, exc)) from exc
+    else:  # pragma: no cover - 理论上 break/raise 会提前结束
+        if last_transport_error is not None:
+            raise QXYMCPError(_format_transport_error(endpoint, last_transport_error)) from last_transport_error
+        raise QXYMCPError(f"网络传输失败，未得到有效响应；endpoint={endpoint}")
 
     result_data = _parse_response_body(body_text)
     if "error" in result_data:
@@ -329,7 +453,7 @@ def _initialize_session(service_name: str) -> str:
             "capabilities": {},
             "clientInfo": {
                 "name": "qixiangyun-declaration-skill",
-                "version": "1.0.0",
+                "version": "2.0.0",
             },
         },
         request_id=1,
@@ -446,8 +570,148 @@ def _collect_status_values(payload: Any) -> list[tuple[str, str]]:
     return markers
 
 
+def _looks_like_business_code(value: Any) -> bool:
+    """判断值是否像业务码。"""
+
+    text = str(value).strip()
+    if not text:
+        return False
+    if text.upper() in {"SUCCESS", "BUSINESS_ERROR", "AUTH_ERROR"}:
+        return False
+    return bool(re.fullmatch(r"\d{4}", text))
+
+
+def _collect_values_by_key(payload: Any, wanted_keys: Sequence[str]) -> list[Any]:
+    """递归提取指定键的值。"""
+
+    matched: list[Any] = []
+    wanted = set(wanted_keys)
+
+    def _walk(node: Any) -> None:
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key in wanted:
+                    matched.append(value)
+                _walk(value)
+        elif isinstance(node, list):
+            for item in node:
+                _walk(item)
+
+    _walk(payload)
+    return matched
+
+
+def extract_business_code(payload: Any) -> str:
+    """提取最能反映业务语义的业务码。"""
+
+    if not isinstance(payload, dict):
+        return ""
+
+    data = payload.get("data")
+    if isinstance(data, dict):
+        direct_code = data.get("code")
+        if _looks_like_business_code(direct_code):
+            return str(direct_code)
+
+    for value in _collect_values_by_key(payload, ("code", "resultCode", "errorCode")):
+        if _looks_like_business_code(value):
+            return str(value).strip()
+
+    top_level_code = payload.get("code")
+    if isinstance(top_level_code, str):
+        return top_level_code.strip()
+    return ""
+
+
+def extract_message(payload: Any) -> str:
+    """提取最有代表性的消息文本。"""
+
+    if not isinstance(payload, dict):
+        return ""
+
+    for candidate in (
+        payload.get("message"),
+        payload.get("resultMessage"),
+        payload.get("result"),
+    ):
+        if isinstance(candidate, str) and candidate.strip():
+            return candidate.strip()
+
+    data = payload.get("data")
+    if isinstance(data, dict):
+        for key in ("message", "resultMessage", "result", "businessStatusName"):
+            candidate = data.get(key)
+            if isinstance(candidate, str) and candidate.strip():
+                return candidate.strip()
+    return ""
+
+
+def _to_float(value: Any) -> float | None:
+    """将值安全转换为浮点数。"""
+
+    if value in (None, ""):
+        return None
+    if isinstance(value, (int, float)):
+        return float(value)
+    text = str(value).strip().replace(",", "")
+    if not text:
+        return None
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def extract_tax_amount(payload: Any) -> float | None:
+    """提取税额字段。"""
+
+    candidates = _collect_values_by_key(
+        payload,
+        ("taxAmount", "bqybtse", "bqybtseSj", "ynsehj", "sjyyjsdseLj"),
+    )
+    for value in candidates:
+        number = _to_float(value)
+        if number is not None:
+            return number
+    return None
+
+
+def is_service_unstable(payload: Any) -> bool:
+    """判断是否命中税局不稳定类异常。"""
+
+    code = extract_business_code(payload)
+    message = extract_message(payload)
+    if code in SERVICE_UNSTABLE_CODES:
+        return True
+    return any(keyword in message for keyword in SERVICE_UNSTABLE_KEYWORDS)
+
+
+def requires_manual_review(payload: Any) -> bool:
+    """判断是否需要人工复核。"""
+
+    code = extract_business_code(payload)
+    message = extract_message(payload)
+    if code in MANUAL_REVIEW_CODES:
+        return True
+    return any(keyword in message for keyword in MANUAL_REVIEW_KEYWORDS)
+
+
+def is_copy_tax_required(payload: Any) -> bool:
+    """判断是否命中抄报税提示。"""
+
+    message = extract_message(payload)
+    return any(keyword in message for keyword in COPY_TAX_KEYWORDS)
+
+
 def infer_task_state(payload: Any) -> str:
     """推断任务状态。"""
+
+    if is_service_unstable(payload):
+        return "pending"
+    if requires_manual_review(payload):
+        return "manual_review_required"
+    if is_copy_tax_required(payload):
+        return "failed"
 
     markers = _collect_status_values(payload)
 
@@ -459,6 +723,16 @@ def infer_task_state(payload: Any) -> str:
                 return "failed"
             if value == "3":
                 return "success"
+
+    business_code = extract_business_code(payload)
+    if business_code in {"2000", "2002", "4601"}:
+        return "success"
+    if business_code in SERVICE_UNSTABLE_CODES:
+        return "pending"
+    if business_code in MANUAL_REVIEW_CODES:
+        return "manual_review_required"
+    if business_code in {"4302", "4317", "4501"}:
+        return "failed"
 
     for _, value in markers:
         if value in FAILURE_MARKERS:
@@ -474,7 +748,21 @@ def infer_task_state(payload: Any) -> str:
     if boolean_markers:
         return "success" if all(value == "true" for value in boolean_markers) else "pending"
 
+    if business_code == "BUSINESS_ERROR":
+        return "failed"
+    message = extract_message(payload)
+    if any(keyword in message for keyword in PENDING_MESSAGE_KEYWORDS):
+        return "pending"
     return "unknown"
+
+
+def is_retryable_response(payload: Any) -> bool:
+    """判断当前响应是否适合进入长退避。"""
+
+    state = infer_task_state(payload)
+    if state == "pending":
+        return True
+    return is_service_unstable(payload)
 
 
 def poll_tool(
@@ -484,40 +772,76 @@ def poll_tool(
     *,
     interval_seconds: int = 5,
     max_attempts: int = 60,
+    short_interval_seconds: int | None = None,
+    short_max_attempts: int | None = None,
+    long_backoff_minutes: Sequence[int] | None = None,
+    log_context: Mapping[str, Any] | None = None,
+    sleep_func: Any = time.sleep,
 ) -> dict[str, Any]:
-    """轮询查询类工具，直到状态终态或超时。"""
+    """轮询查询类工具，先短轮询，再生成长退避计划。"""
 
-    if interval_seconds <= 0:
+    actual_interval = short_interval_seconds or interval_seconds
+    actual_attempts = short_max_attempts or max_attempts
+    if actual_interval <= 0:
         raise ValueError("interval_seconds 必须大于 0。")
-    if max_attempts <= 0:
+    if actual_attempts <= 0:
         raise ValueError("max_attempts 必须大于 0。")
 
+    backoff_plan = list(long_backoff_minutes or DEFAULT_LONG_BACKOFF_MINUTES)
+    history: list[dict[str, Any]] = []
     last_result: Any = None
     last_state = "unknown"
-    for attempt in range(1, max_attempts + 1):
+    retryable = False
+    context = dict(log_context or {})
+    task_id = str(context.get("taskId") or tool_args.get("taskId") or "-")
+    tax_code = str(context.get("yzpzzlDm") or tool_args.get("yzpzzlDm") or "-")
+
+    for attempt in range(1, actual_attempts + 1):
         last_result = call_tool(service_name, tool_name, tool_args)
         last_state = infer_task_state(last_result)
+        retryable = is_retryable_response(last_result)
+        history.append(
+            {
+                "attempt": attempt,
+                "state": last_state,
+                "business_code": extract_business_code(last_result),
+                "message": extract_message(last_result),
+            }
+        )
         LOGGER.info(
-            "轮询服务=%s 工具=%s 第 %s/%s 次，状态=%s",
+            "轮询服务=%s 工具=%s taskId=%s yzpzzlDm=%s 第 %s/%s 次，状态=%s",
             service_name,
             tool_name,
+            task_id,
+            tax_code,
             attempt,
-            max_attempts,
+            actual_attempts,
             last_state,
         )
-        if last_state in {"success", "failed"}:
+        if last_state in {"success", "failed", "manual_review_required"}:
             return {
                 "state": last_state,
+                "phase": "short_poll",
                 "attempts": attempt,
+                "retryable": retryable,
                 "result": last_result,
+                "history": history,
+                "next_retry_after_minutes": None,
+                "backoff_plan_minutes": backoff_plan,
             }
-        if attempt < max_attempts:
-            time.sleep(interval_seconds)
+        if attempt < actual_attempts:
+            sleep_func(actual_interval)
 
+    next_retry_after = backoff_plan[0] if retryable and backoff_plan else None
     return {
-        "state": "timeout",
-        "attempts": max_attempts,
+        "state": "pending" if retryable else "timeout",
+        "phase": "backoff" if retryable else "short_poll",
+        "attempts": actual_attempts,
+        "retryable": retryable,
         "result": last_result,
+        "history": history,
+        "next_retry_after_minutes": next_retry_after,
+        "backoff_plan_minutes": backoff_plan,
     }
 
 
@@ -565,6 +889,8 @@ def validate_workflow_config(config: Mapping[str, Any]) -> dict[str, Any]:
         raise ValueError("`year` 必须是整数。")
     if not isinstance(period, int):
         raise ValueError("`period` 必须是整数。")
+    if period < 1 or period > 12:
+        raise ValueError("`period` 必须在 1 到 12 之间，表示申报月份。")
     if not isinstance(steps, dict):
         raise ValueError("`steps` 必须是对象。")
 
@@ -573,6 +899,7 @@ def validate_workflow_config(config: Mapping[str, Any]) -> dict[str, Any]:
     normalized["year"] = year
     normalized["period"] = period
     normalized["steps"] = steps
+
     poll_interval_seconds = int(config.get("poll_interval_seconds", 5))
     max_poll_attempts = int(config.get("max_poll_attempts", 60))
     if poll_interval_seconds <= 0:
@@ -580,6 +907,65 @@ def validate_workflow_config(config: Mapping[str, Any]) -> dict[str, Any]:
     if max_poll_attempts <= 0:
         raise ValueError("`max_poll_attempts` 必须大于 0。")
 
+    poll_strategy = config.get("poll_strategy", {})
+    if poll_strategy and not isinstance(poll_strategy, dict):
+        raise ValueError("`poll_strategy` 必须是对象。")
+    short_interval_seconds = int(
+        poll_strategy.get("short_interval_seconds", poll_interval_seconds)
+    )
+    short_max_attempts = int(
+        poll_strategy.get("short_max_attempts", max_poll_attempts)
+    )
+    long_backoff_minutes = poll_strategy.get(
+        "long_backoff_minutes", list(DEFAULT_LONG_BACKOFF_MINUTES)
+    )
+    if not isinstance(long_backoff_minutes, list) or not long_backoff_minutes:
+        raise ValueError("`poll_strategy.long_backoff_minutes` 必须是非空数组。")
+
+    checkpoint = config.get("checkpoint", {})
+    if checkpoint and not isinstance(checkpoint, dict):
+        raise ValueError("`checkpoint` 必须是对象。")
+
+    rules = config.get("rules", {})
+    if rules and not isinstance(rules, dict):
+        raise ValueError("`rules` 必须是对象。")
+
+    manual_review = config.get("manual_review", {})
+    if manual_review and not isinstance(manual_review, dict):
+        raise ValueError("`manual_review` 必须是对象。")
+
+    post_actions = config.get("post_actions", {})
+    if post_actions and not isinstance(post_actions, dict):
+        raise ValueError("`post_actions` 必须是对象。")
+
     normalized["poll_interval_seconds"] = poll_interval_seconds
     normalized["max_poll_attempts"] = max_poll_attempts
+    normalized["poll_strategy"] = {
+        "short_interval_seconds": short_interval_seconds,
+        "short_max_attempts": short_max_attempts,
+        "long_backoff_minutes": [int(item) for item in long_backoff_minutes],
+    }
+    normalized["checkpoint"] = {
+        "enabled": bool(checkpoint.get("enabled", True)),
+        "path": checkpoint.get("path"),
+        "resume_mode": checkpoint.get("resume_mode", "from_pending"),
+    }
+    normalized["rules"] = {
+        "accrual_mode": rules.get("accrual_mode", "validate_and_suggest"),
+        "response_rule_set": rules.get("response_rule_set", "default"),
+        "tax_burden_enabled": bool(rules.get("tax_burden_enabled", False)),
+        "industry_code": rules.get("industry_code"),
+        "industry_name": rules.get("industry_name"),
+        "tax_burden_blocking": bool(rules.get("tax_burden_blocking", False)),
+        "allow_force_declare_on_4300": bool(rules.get("allow_force_declare_on_4300", False)),
+    }
+    normalized["manual_review"] = {
+        "enabled": bool(manual_review.get("enabled", True)),
+        "emit_customer_message": bool(manual_review.get("emit_customer_message", True)),
+    }
+    normalized["post_actions"] = {
+        "auto_download_pdf": bool(post_actions.get("auto_download_pdf", False)),
+        "auto_missing_check": bool(post_actions.get("auto_missing_check", False)),
+        "auto_prepare_payment": bool(post_actions.get("auto_prepare_payment", False)),
+    }
     return normalized

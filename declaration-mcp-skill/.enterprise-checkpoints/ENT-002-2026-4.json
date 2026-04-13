@@ -1,0 +1,552 @@
+{
+  "success": true,
+  "status": "success",
+  "aggOrgId": "ENT-002",
+  "accountId": "ACC-LOGIN-001",
+  "display_name": "企业二",
+  "year": 2026,
+  "period": 4,
+  "login": {
+    "aggOrgId": "4788840764917695",
+    "accountId": "ACC-LOGIN-001",
+    "source": "cache"
+  },
+  "config": {
+    "aggOrgId": "ENT-002",
+    "year": 2026,
+    "period": 4,
+    "accountId": "ACC-LOGIN-001",
+    "display_name": "企业二",
+    "financial_report_input": null,
+    "vat_adjustment": {
+      "no_ticket_income_amount": 0.0
+    }
+  },
+  "checkpoint_path": "/Users/xueds/Python/skills/declaration-mcp-skill/.enterprise-checkpoints/ENT-002-2026-4.json",
+  "steps": {
+    "fetch_roster": {
+      "step_name": "fetch_roster",
+      "service": "roster_entry",
+      "tool": "initiate_declaration_entry_task_auto",
+      "request_payload": {
+        "aggOrgId": "ENT-002",
+        "year": 2026,
+        "period": 4,
+        "accountId": "ACC-LOGIN-001"
+      },
+      "taskId": "TASK-ROSTER-002",
+      "normalized_status": "success",
+      "poll_state": "success",
+      "attempt_count": 1,
+      "next_retry_at": null,
+      "business_code": "2000",
+      "business_message": null,
+      "raw_response": {
+        "code": "2000",
+        "data": {
+          "detail": [
+            {
+              "yzpzzlDm": "BDA0610606"
+            }
+          ]
+        }
+      },
+      "start": {
+        "taskId": "TASK-ROSTER-002"
+      },
+      "query": {
+        "state": "success",
+        "attempts": 1,
+        "result": {
+          "code": "2000",
+          "data": {
+            "detail": [
+              {
+                "yzpzzlDm": "BDA0610606"
+              }
+            ]
+          }
+        }
+      },
+      "finalized_at": "2026-04-10T06:27:02Z",
+      "detail": [
+        {
+          "yzpzzlDm": "BDA0610606"
+        }
+      ],
+      "catalog": [
+        {
+          "code": "BDA0610606",
+          "name": "增值税及附加税费申报表（一般纳税人适用）",
+          "short_name": "增值税一般纳税人",
+          "category": "tax_declaration",
+          "supported_init": true,
+          "unsupported_reason": null
+        }
+      ]
+    },
+    "init_data_BDA0610606": {
+      "step_name": "init_data_BDA0610606",
+      "service": "initialize_data",
+      "tool": "load_init_data_task",
+      "request_payload": {
+        "aggOrgId": "ENT-002",
+        "year": 2026,
+        "period": 4,
+        "accountId": "ACC-LOGIN-001",
+        "zsxmList": [
+          {
+            "yzpzzlDm": "BDA0610606",
+            "ssqQ": "2026-03-01",
+            "ssqZ": "2026-03-31"
+          }
+        ]
+      },
+      "taskId": "TASK-INIT-VAT-002",
+      "normalized_status": "success",
+      "poll_state": "success",
+      "attempt_count": 1,
+      "next_retry_at": null,
+      "business_code": "SUCCESS",
+      "business_message": "初始化成功",
+      "raw_response": {
+        "code": "SUCCESS",
+        "message": "初始化成功",
+        "data": {
+          "initData": {
+            "foo": "bar"
+          }
+        }
+      },
+      "start": {
+        "taskId": "TASK-INIT-VAT-002"
+      },
+      "query": {
+        "state": "success",
+        "attempts": 1,
+        "result": {
+          "code": "SUCCESS",
+          "message": "初始化成功",
+          "data": {
+            "initData": {
+              "foo": "bar"
+            }
+          }
+        }
+      },
+      "finalized_at": "2026-04-10T06:27:02Z"
+    },
+    "tax_report_BDA0610606": {
+      "step_name": "vat_tax_report",
+      "service": "declaration_submission",
+      "tool": "upload_tax_report_data_auto",
+      "request_payload": {
+        "aggOrgId": "ENT-002",
+        "year": 2026,
+        "period": 4,
+        "accountId": "ACC-LOGIN-001",
+        "tax_data": {},
+        "tax_type": "ybData",
+        "isDirectDeclare": true,
+        "allowRepeatDeclare": false
+      },
+      "taskId": "TASK-DECL-VAT-002",
+      "normalized_status": "success",
+      "poll_state": "success",
+      "attempt_count": 1,
+      "next_retry_at": null,
+      "business_code": "2000",
+      "business_message": "申报成功",
+      "raw_response": {
+        "code": "2000",
+        "message": "申报成功",
+        "data": {
+          "taxAmount": "0.00"
+        }
+      },
+      "start": {
+        "taskId": "TASK-DECL-VAT-002"
+      },
+      "query": {
+        "state": "success",
+        "attempts": 1,
+        "result": {
+          "code": "2000",
+          "message": "申报成功",
+          "data": {
+            "taxAmount": "0.00"
+          }
+        }
+      },
+      "finalized_at": "2026-04-10T06:27:02Z"
+    },
+    "declare_info": {
+      "step_name": "declare_info",
+      "service": "declaration_query",
+      "tool": "load_declare_info_task",
+      "request_payload": {
+        "aggOrgId": "ENT-002",
+        "year": 2026,
+        "period": 4,
+        "accountId": "ACC-LOGIN-001"
+      },
+      "taskId": "TASK-INFO-002",
+      "normalized_status": "success",
+      "poll_state": "success",
+      "attempt_count": 1,
+      "next_retry_at": null,
+      "business_code": "2000",
+      "business_message": null,
+      "raw_response": {
+        "code": "2000",
+        "data": {
+          "detail": [
+            {
+              "yzpzzlDm": "BDA0610606",
+              "state": 1,
+              "payState": -1,
+              "fromDate": "2026-03-01",
+              "toDate": "2026-03-31"
+            }
+          ]
+        }
+      },
+      "start": {
+        "taskId": "TASK-INFO-002"
+      },
+      "query": {
+        "state": "success",
+        "attempts": 1,
+        "result": {
+          "code": "2000",
+          "data": {
+            "detail": [
+              {
+                "yzpzzlDm": "BDA0610606",
+                "state": 1,
+                "payState": -1,
+                "fromDate": "2026-03-01",
+                "toDate": "2026-03-31"
+              }
+            ]
+          }
+        }
+      },
+      "finalized_at": "2026-04-10T06:27:02Z",
+      "detail": [
+        {
+          "yzpzzlDm": "BDA0610606",
+          "state": 1,
+          "payState": -1,
+          "fromDate": "2026-03-01",
+          "toDate": "2026-03-31"
+        }
+      ]
+    },
+    "current_pdf": {
+      "step_name": "current_pdf",
+      "service": "pdf_download",
+      "tool": "load_pdf_task",
+      "request_payload": {
+        "aggOrgId": "ENT-002",
+        "year": 2026,
+        "period": 4,
+        "accountId": "ACC-LOGIN-001",
+        "zsxmList": [
+          {
+            "yzpzzlDm": "BDA0610606",
+            "ssqQ": "2026-03-01",
+            "ssqZ": "2026-03-31"
+          }
+        ],
+        "analysisPdf": "Y"
+      },
+      "taskId": "TASK-PDF-002",
+      "normalized_status": "success",
+      "poll_state": "success",
+      "attempt_count": 1,
+      "next_retry_at": null,
+      "business_code": "2000",
+      "business_message": null,
+      "raw_response": {
+        "code": "2000",
+        "data": {
+          "pdfFileUrl": "https://example.com/vat.pdf"
+        }
+      },
+      "start": {
+        "taskId": "TASK-PDF-002"
+      },
+      "query": {
+        "state": "success",
+        "attempts": 1,
+        "result": {
+          "code": "2000",
+          "data": {
+            "pdfFileUrl": "https://example.com/vat.pdf"
+          }
+        }
+      },
+      "finalized_at": "2026-04-10T06:27:02Z"
+    }
+  },
+  "roster": {
+    "step_name": "fetch_roster",
+    "service": "roster_entry",
+    "tool": "initiate_declaration_entry_task_auto",
+    "request_payload": {
+      "aggOrgId": "ENT-002",
+      "year": 2026,
+      "period": 4,
+      "accountId": "ACC-LOGIN-001"
+    },
+    "taskId": "TASK-ROSTER-002",
+    "normalized_status": "success",
+    "poll_state": "success",
+    "attempt_count": 1,
+    "next_retry_at": null,
+    "business_code": "2000",
+    "business_message": null,
+    "raw_response": {
+      "code": "2000",
+      "data": {
+        "detail": [
+          {
+            "yzpzzlDm": "BDA0610606"
+          }
+        ]
+      }
+    },
+    "start": {
+      "taskId": "TASK-ROSTER-002"
+    },
+    "query": {
+      "state": "success",
+      "attempts": 1,
+      "result": {
+        "code": "2000",
+        "data": {
+          "detail": [
+            {
+              "yzpzzlDm": "BDA0610606"
+            }
+          ]
+        }
+      }
+    },
+    "finalized_at": "2026-04-10T06:27:02Z",
+    "detail": [
+      {
+        "yzpzzlDm": "BDA0610606"
+      }
+    ],
+    "catalog": [
+      {
+        "code": "BDA0610606",
+        "name": "增值税及附加税费申报表（一般纳税人适用）",
+        "short_name": "增值税一般纳税人",
+        "category": "tax_declaration",
+        "supported_init": true,
+        "unsupported_reason": null
+      }
+    ]
+  },
+  "financial_report": null,
+  "income_tax": null,
+  "vat": {
+    "step_name": "vat_tax_report",
+    "service": "declaration_submission",
+    "tool": "upload_tax_report_data_auto",
+    "request_payload": {
+      "aggOrgId": "ENT-002",
+      "year": 2026,
+      "period": 4,
+      "accountId": "ACC-LOGIN-001",
+      "tax_data": {},
+      "tax_type": "ybData",
+      "isDirectDeclare": true,
+      "allowRepeatDeclare": false
+    },
+    "taskId": "TASK-DECL-VAT-002",
+    "normalized_status": "success",
+    "poll_state": "success",
+    "attempt_count": 1,
+    "next_retry_at": null,
+    "business_code": "2000",
+    "business_message": "申报成功",
+    "raw_response": {
+      "code": "2000",
+      "message": "申报成功",
+      "data": {
+        "taxAmount": "0.00"
+      }
+    },
+    "start": {
+      "taskId": "TASK-DECL-VAT-002"
+    },
+    "query": {
+      "state": "success",
+      "attempts": 1,
+      "result": {
+        "code": "2000",
+        "message": "申报成功",
+        "data": {
+          "taxAmount": "0.00"
+        }
+      }
+    },
+    "finalized_at": "2026-04-10T06:27:02Z"
+  },
+  "declare_info": {
+    "step_name": "declare_info",
+    "service": "declaration_query",
+    "tool": "load_declare_info_task",
+    "request_payload": {
+      "aggOrgId": "ENT-002",
+      "year": 2026,
+      "period": 4,
+      "accountId": "ACC-LOGIN-001"
+    },
+    "taskId": "TASK-INFO-002",
+    "normalized_status": "success",
+    "poll_state": "success",
+    "attempt_count": 1,
+    "next_retry_at": null,
+    "business_code": "2000",
+    "business_message": null,
+    "raw_response": {
+      "code": "2000",
+      "data": {
+        "detail": [
+          {
+            "yzpzzlDm": "BDA0610606",
+            "state": 1,
+            "payState": -1,
+            "fromDate": "2026-03-01",
+            "toDate": "2026-03-31"
+          }
+        ]
+      }
+    },
+    "start": {
+      "taskId": "TASK-INFO-002"
+    },
+    "query": {
+      "state": "success",
+      "attempts": 1,
+      "result": {
+        "code": "2000",
+        "data": {
+          "detail": [
+            {
+              "yzpzzlDm": "BDA0610606",
+              "state": 1,
+              "payState": -1,
+              "fromDate": "2026-03-01",
+              "toDate": "2026-03-31"
+            }
+          ]
+        }
+      }
+    },
+    "finalized_at": "2026-04-10T06:27:02Z",
+    "detail": [
+      {
+        "yzpzzlDm": "BDA0610606",
+        "state": 1,
+        "payState": -1,
+        "fromDate": "2026-03-01",
+        "toDate": "2026-03-31"
+      }
+    ]
+  },
+  "pdfs": {
+    "step_name": "current_pdf",
+    "service": "pdf_download",
+    "tool": "load_pdf_task",
+    "request_payload": {
+      "aggOrgId": "ENT-002",
+      "year": 2026,
+      "period": 4,
+      "accountId": "ACC-LOGIN-001",
+      "zsxmList": [
+        {
+          "yzpzzlDm": "BDA0610606",
+          "ssqQ": "2026-03-01",
+          "ssqZ": "2026-03-31"
+        }
+      ],
+      "analysisPdf": "Y"
+    },
+    "taskId": "TASK-PDF-002",
+    "normalized_status": "success",
+    "poll_state": "success",
+    "attempt_count": 1,
+    "next_retry_at": null,
+    "business_code": "2000",
+    "business_message": null,
+    "raw_response": {
+      "code": "2000",
+      "data": {
+        "pdfFileUrl": "https://example.com/vat.pdf"
+      }
+    },
+    "start": {
+      "taskId": "TASK-PDF-002"
+    },
+    "query": {
+      "state": "success",
+      "attempts": 1,
+      "result": {
+        "code": "2000",
+        "data": {
+          "pdfFileUrl": "https://example.com/vat.pdf"
+        }
+      }
+    },
+    "finalized_at": "2026-04-10T06:27:02Z"
+  },
+  "tracked_periods": {
+    "BDA0610606": {
+      "fromDate": "2026-03-01",
+      "toDate": "2026-03-31",
+      "ssqQ": "2026-03-01",
+      "ssqZ": "2026-03-31",
+      "zspmDm": null,
+      "tax_label": "增值税一般纳税人"
+    }
+  },
+  "successful_declarations": [
+    {
+      "yzpzzlDm": "BDA0610606",
+      "status": "success",
+      "source": "tax_report",
+      "ssqQ": "2026-03-01",
+      "ssqZ": "2026-03-31",
+      "fromDate": "2026-03-01",
+      "toDate": "2026-03-31",
+      "tax_label": "增值税一般纳税人",
+      "raw_response": {
+        "code": "2000",
+        "message": "申报成功",
+        "data": {
+          "taxAmount": "0.00"
+        }
+      }
+    }
+  ],
+  "payment_preparation": {
+    "detail": [],
+    "certificate": [
+      {
+        "yzpzzlDm": "BDA0610606",
+        "ssqQ": "2026-03-01",
+        "ssqZ": "2026-03-31",
+        "zspmDm": null
+      }
+    ],
+    "payment_config": null
+  },
+  "operator_advice": [],
+  "updated_at": "2026-04-10T06:27:02Z"
+}

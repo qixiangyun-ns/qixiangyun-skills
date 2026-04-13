@@ -115,7 +115,7 @@ python3 scripts/mcp_client.py --service roster_entry --list-tools
 python3 scripts/mcp_client.py \
   --service roster_entry \
   --tool initiate_declaration_entry_task_auto \
-  --args '{"aggOrgId":"4788840764917695","year":2026,"period":3}'
+  --args '{"aggOrgId":"YOUR_AGG_ORG_ID","year":2026,"period":4}'
 ```
 
 查询应申报清册任务结果：
@@ -124,7 +124,7 @@ python3 scripts/mcp_client.py \
 python3 scripts/mcp_client.py \
   --service roster_entry \
   --tool query_roster_entry_task_auto \
-  --args '{"aggOrgId":"4788840764917695","taskId":"任务ID"}'
+  --args '{"aggOrgId":"YOUR_AGG_ORG_ID","taskId":"任务ID"}'
 ```
 
 发起初始化任务：
@@ -142,7 +142,7 @@ python3 scripts/mcp_client.py \
 python3 scripts/mcp_client.py \
   --service declaration_query \
   --tool load_declare_info_task \
-  --args '{"aggOrgId":"4788840764917695","year":2026,"period":3}'
+  --args '{"aggOrgId":"YOUR_AGG_ORG_ID","year":2026,"period":4}'
 ```
 
 生成闭环配置模板：
@@ -150,9 +150,18 @@ python3 scripts/mcp_client.py \
 ```bash
 python3 scripts/declaration_workflow.py scaffold-config \
   --year 2026 \
-  --period 3 \
+  --period 4 \
   --output /tmp/declaration-config.json
 ```
+
+说明：
+
+- 顶层 `period` 表示申报月份，不是税款所属期月份
+- 例如 2026 年 4 月办理 3 月所属期月报时，应传 `year=2026`、`period=4`
+- `init_data.zsxmList[]` 如未直接传 `ssqQ`、`ssqZ`，可使用本地字段 `period_cycle` 指定 `monthly`、`quarterly`、`annual`
+- `init_data` 查询阶段会按税种逐个短轮询；“初始化任务还在执行中，请稍后获取”会识别为 `pending`
+- `current_pdf.zsxmList` 兼容字符串数组或对象数组，脚本会自动归一化为 `{"yzpzzlDm": ...}` 结构
+- 若税种目录已固定周期（如 `annual`），本地传入冲突的 `period_cycle` 会直接报错
 
 执行申报准备闭环：
 
@@ -170,6 +179,20 @@ python3 scripts/declaration_workflow.py run --config /tmp/declaration-config.jso
 ```
 
 工作流配置说明见 [references/workflow.md](references/workflow.md)
+
+执行企业级申报编排：
+
+```bash
+python3 scripts/enterprise_filing_workflow.py scaffold-config \
+  --year 2026 \
+  --period 4 \
+  --output /tmp/enterprise-filing-config.json
+
+python3 scripts/enterprise_filing_workflow.py run \
+  --config /tmp/enterprise-filing-config.json
+```
+
+企业级编排说明见 [references/enterprise-filing-workflow.md](references/enterprise-filing-workflow.md)
 
 初始化数据时，当前已知本地会提前拦截不支持的税种：
 
